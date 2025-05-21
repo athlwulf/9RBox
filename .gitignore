@@ -1,0 +1,28 @@
+# macOS system files
+.DS_Store
+Icon?
+
+# Obsidian settings (unless you want to share these)
+.obsidian/
+
+# Node/npm (if using JavaScript tooling)
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+
+# Swift/Xcode (if using)
+*.xcworkspace
+*.xcodeproj
+*.xcuserstate
+DerivedData/
+build/
+
+# Logs
+*.log
+
+# Other unneeded binaries or temp files
+*.bak
+*.tmp
