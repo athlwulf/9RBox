@@ -1,0 +1,8 @@
+[package]
+name = "box_planner_ui"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.9", features = ["canvas", "tokio"] }
+box_planner_core = { path = "../core" }
