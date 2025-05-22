@@ -1,0 +1,1655 @@
+//
+//  _BoxTests.swift
+//  9BoxTests
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import Testing
+@testable import _Box
+
+struct _BoxTests {
+
+    @Test func example() async throws {
+        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    }
+
+}
+//
+//  Item.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import Foundation
+import SwiftData
+
+@Model
+final class Item {
+    var timestamp: Date
+    
+    init(timestamp: Date) {
+        self.timestamp = timestamp
+    }
+}
+//
+//  AppSettings.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftUI
+import Combine
+
+class AppSettings: ObservableObject {
+    // App-wide settings with persistence
+    @AppStorage("departmentAliases") var departmentAliasesData: Data = Data()
+    @AppStorage("departmentColorsData") private var storedDepartmentColorsData: Data = Data() // Renamed to avoid conflict
+    @AppStorage("autoSaveEnabled") var autoSaveEnabled: Bool = false
+    @AppStorage("primaryColorHex") private var primaryColorHex: String = "0000FF"
+    @AppStorage("primaryTextColorHex") private var primaryTextColorHex: String = "0000FF"
+    @AppStorage("secondaryTextColor") private var secondaryTextColorHex: String = "0000FF"
+    @AppStorage("hoverAccentColorHex") private var hoverAccentColorHex: String = "808080"
+    
+    @AppStorage("themePreference") var themePreference: String = "system" {
+        didSet {
+            updateColorScheme()
+        }
+    }
+
+    @Published var colorScheme: ColorScheme? = nil
+    @Published var defaultCardColor: Color = .white
+    @Published var departmentColors: [String: String] = [:] // Dynamic in-memory version
+    //@Published var departmentAliases: [String: String] = [:]
+    @Published var departmentList: [String] = [] // Dynamic list of departments
+    
+    init() {
+        loadDepartmentColors()
+    }
+
+    // Computed properties for dynamic Color storage
+    var primaryColor: Color {
+        get {
+            Color(hex: primaryColorHex) ?? Color.black // Default to black if nil
+        }
+        set {
+            primaryColorHex = newValue.toHex() ?? "#000000"
+        }
+    }
+
+    var hoverAccentColor: Color {
+        get {
+            Color(hex: hoverAccentColorHex) ?? Color.gray // Default to gray if nil
+        }
+        set {
+            hoverAccentColorHex = newValue.toHex() ?? "#808080"
+        }
+    }
+
+    var primaryTextColor: Color {
+        get {
+            Color(hex: primaryTextColorHex) ?? Color.black // Default to black if nil
+        }
+        set {
+            primaryTextColorHex = newValue.toHex() ?? "#000000"
+        }
+    }
+
+    var secondaryTextColor: Color {
+        get {
+            Color(hex: secondaryTextColorHex) ?? Color.white // Default to white if nil
+        }
+        set {
+            secondaryTextColorHex = newValue.toHex() ?? "#FFFFFF"
+        }
+    }
+
+    var departmentAliases: [String: String] {
+            get {
+                do {
+                    return try JSONDecoder().decode([String: String].self, from: departmentAliasesData)
+                } catch {
+                    print("Error decoding departmentAliases: \(error)")
+                    return [:]
+                }
+            }
+            set {
+                do {
+                    departmentAliasesData = try JSONEncoder().encode(newValue)
+                } catch {
+                    print("Error encoding departmentAliases: \(error)")
+                }
+            }
+        }
+
+    var storedDepartmentColors: [String: String] {
+        get {
+            guard !storedDepartmentColorsData.isEmpty else {
+                print("storedDepartmentColorsData is empty, initializing with default value")
+                return [:]
+            }
+            do {
+                return try JSONDecoder().decode([String: String].self, from: storedDepartmentColorsData)
+            } catch {
+                print("Error decoding storedDepartmentColors: \(error)")
+                return [:]
+            }
+        }
+        set {
+            do {
+                storedDepartmentColorsData = try JSONEncoder().encode(newValue)
+            } catch {
+                print("Error encoding storedDepartmentColors: \(error)")
+            }
+        }
+    }
+
+    func loadDepartmentColors() {
+        print("Raw storedDepartmentColorsData: \(storedDepartmentColorsData)")
+        departmentColors = storedDepartmentColors
+        print("Loaded departmentColors: \(departmentColors)")
+    }
+
+    func saveDepartmentColors() {
+        do {
+            // Simulate an error-throwing function, such as interacting with UserDefaults
+            let encodedData = try JSONEncoder().encode(departmentColors)
+            UserDefaults.standard.set(encodedData, forKey: "departmentColors")
+            print("Saved departmentColors: \(departmentColors)")
+        } catch {
+            print("Error saving departmentColors: \(error)")
+        }
+    }
+    
+    func updateDepartmentList(from users: [User]) {
+        print("Updating department list from users: \(users)")
+
+        let uniqueDepartments = Set(users.compactMap { $0.prGroup2025 })
+        departmentList = Array(uniqueDepartments).sorted()
+        print("Updated departmentList: \(departmentList)")
+
+        for department in departmentList {
+            if departmentColors[department] == nil {
+                assignDefaultColors(to: departmentList)
+               // departmentColors[department] = "#FFFFFF" // Assign default color
+                print("Assigned default color to department: \(department)")
+            }
+        }
+    }
+    
+    let defaultColors = [
+        "#39B54A", "#D7E021", "#FCB040", "#F15A2B", "#BF1E2D", "#9E1E63",
+        "#662D91", "#283991", "#22ABE1", "#026839", "#535353", "#C49B6B",
+        "#8A5E3B", "#3B2312", "#EE257B", "#912312", "#3B2312", "#EE257B"
+    ]
+    
+    func assignDefaultColors(to departments: [String]) {
+        for (index, department) in departments.enumerated() {
+            // Cycle through colors using the modulo operator
+            let colorIndex = index % defaultColors.count
+            departmentColors[department] = defaultColors[colorIndex]
+        }
+    }
+
+    func selectSaveLocation() {
+        print("Select save location tapped")
+    }
+
+    private func updateColorScheme() {
+        switch themePreference {
+        case "light":
+            colorScheme = .light
+        case "dark":
+            colorScheme = .dark
+        default:
+            colorScheme = nil // System default
+        }
+    }
+
+    func getAppVersion() -> String { "0.0.4" }
+}
+//
+//  NotesViewModel.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/15/25.
+//
+
+import SwiftUI
+
+class NotesViewModel: ObservableObject, Identifiable {
+    var id: String // Unique identifier for each user
+    @Published var notes: String {
+        didSet {
+            // Save notes to UserDefaults whenever they change
+            UserDefaults.standard.set(notes, forKey: id)
+        }
+    }
+    
+    private var isUpdating = false
+
+    init(userID: String) {
+        self.id = userID
+        // Load saved notes for this user, if available
+        self.notes = UserDefaults.standard.string(forKey: userID) ?? ""
+    }
+    
+    // Explicitly save notes to UserDefaults
+    func saveNotes() {
+        UserDefaults.standard.set(notes, forKey: id)
+    }
+
+    // Update notes with a debounce mechanism
+    func updateNotes(newNotes: String) {
+        if !isUpdating {
+            isUpdating = true
+            notes = newNotes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.saveNotes()  // Save after a short delay
+                self.isUpdating = false
+            }
+        }
+    }
+}
+//
+//  User.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import Foundation
+
+//
+//  User.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import Foundation
+
+struct User: Identifiable, Codable {
+    var id: String { userID } // Use userID as a unique identifier
+    let prGroup2025: String
+    let userID: String
+    let district: String
+    let firstName: String
+    let lastName: String
+    let currentPosition: String
+    let currentTempPosition: String?
+    let grade: String
+    let dept: String
+    let subFunction: String
+    let lastHireDate: String
+    let top: String
+    let yos: String
+    let reportsTo: String
+    let pr2021: Double?
+    let pr2022: Double?
+    let pr2023: Double?
+    let pr2024: Double?
+    let user9Box2024: String?
+    let criticalityOfRole: String?
+    let attritionRisk: String?
+    let potentialSuccessor: String?
+    let successorsReadiness: String?
+    let successorDevelopment: String?
+    let prNotes: String?
+    var currentLabel: String? = nil // Tracks which grid the user belongs to
+    
+    enum CodingKeys: String, CodingKey {
+        //case id = "User ID"
+        case prGroup2025 = "PR Group 2025"
+        case userID = "User ID"
+        case district = "District"
+        case firstName = "First Name"
+        case lastName = "Last Name"
+        case currentPosition = "Current Position"
+        case currentTempPosition = "Current Temp Position"
+        case grade = "Grade"
+        case dept = "Dept"
+        case subFunction = "Sub Function"
+        case lastHireDate = "Last Hire Date"
+        case top = "TOP"
+        case yos = "YOS"
+        case reportsTo = "Reports to"
+        case pr2021 = "PR 2021"
+        case pr2022 = "PR 2022"
+        case pr2023 = "PR 2023"
+        case pr2024 = "PR 2024"
+        case user9Box2024 = "User  9Box 2024"
+        case criticalityOfRole = "Criticality of Role"
+        case attritionRisk = "Attrition Risk"
+        case potentialSuccessor = "Potential Successor"
+        case successorsReadiness = " Successor’s Readiness"
+        case successorDevelopment = "Successor  Development"
+        case prNotes = "PR Notes"
+    }
+    
+    // Convert CSV string to User instance
+    static func fromCSV(_ csv: String) -> User? {
+        let components = csv.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        guard components.count >= 25 else { return nil }  // Ensure all 25 columns exist
+
+        return User(
+            prGroup2025: components[0],
+            userID: components[1],
+            district: components[2],
+            firstName: components[3],
+            lastName: components[4],
+            currentPosition: components[5],
+            currentTempPosition: components[6].isEmpty ? nil : components[6],
+            grade: components[7],
+            dept: components[8],
+            subFunction: components[9],
+            lastHireDate: components[10],
+            top: components[11],
+            yos: components[12],
+            reportsTo: components[13],
+            pr2021: Double(components[14]) ?? nil,
+            pr2022: Double(components[15]) ?? nil,
+            pr2023: Double(components[16]) ?? nil,
+            pr2024: Double(components[17]) ?? nil,
+            user9Box2024: components[18].isEmpty ? nil : components[18],
+            criticalityOfRole: components[19].isEmpty ? nil : components[19],
+            attritionRisk: components[20].isEmpty ? nil : components[20],
+            potentialSuccessor: components[21].isEmpty ? nil : components[21],
+            successorsReadiness: components[22].isEmpty ? nil : components[22],
+            successorDevelopment: components[23].isEmpty ? nil : components[23],
+            prNotes: components[24].isEmpty ? nil : components[24]
+        )
+    }
+
+    // Convert User instance to CSV string
+    func toCSV() -> String {
+        let fields: [String] = [
+            prGroup2025,
+            userID,
+            district,
+            firstName,
+            lastName,
+            currentPosition,
+            currentTempPosition ?? "",
+            grade,
+            dept,
+            subFunction,
+            lastHireDate,
+            top,
+            yos,
+            reportsTo,
+            pr2021.map { String(format: "%.2f", $0) } ?? "", // Formats Double to 2 decimal places
+            pr2022.map { String(format: "%.2f", $0) } ?? "",
+            pr2023.map { String(format: "%.2f", $0) } ?? "",
+            pr2024.map { String(format: "%.2f", $0) } ?? "",
+            user9Box2024 ?? "",
+            criticalityOfRole ?? "",
+            attritionRisk ?? "",
+            potentialSuccessor ?? "",
+            successorsReadiness ?? "",
+            successorDevelopment ?? "",
+            prNotes ?? ""
+        ]
+        
+        return fields.joined(separator: ",")
+    }
+}
+//
+//  Color+Extensions.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftUI
+import AppKit // Add this import to access NSColor for macOS
+
+extension Color {
+    /// Converts a `Color` to a hexadecimal string.
+    func toHex() -> String? {
+        #if canImport(UIKit)
+        let uiColor = UIColor(self)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return nil
+        }
+
+        #elseif canImport(AppKit)
+        let nsColor = NSColor(self)
+        guard let convertedColor = nsColor.usingColorSpace(.deviceRGB) else {
+            return nil
+        }
+        let red = convertedColor.redComponent
+        let green = convertedColor.greenComponent
+        let blue = convertedColor.blueComponent
+        #endif
+
+        return String(format: "#%02X%02X%02X", Int(red * 255), Int(green * 255), Int(blue * 255))
+    }
+
+    // Initialize Color from Hex String
+    init?(hex: String) {
+        let hex = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scanner = Scanner(string: hex)
+        
+        // Remove "#" if present
+        if hex.hasPrefix("#") {
+            scanner.currentIndex = hex.index(after: hex.startIndex)
+        }
+        
+        var rgbValue: UInt64 = 0
+        guard scanner.scanHexInt64(&rgbValue) else {
+            return nil
+        }
+
+        let red = Double((rgbValue & 0xFF0000) >> 16) / 255.0
+        let green = Double((rgbValue & 0x00FF00) >> 8) / 255.0
+        let blue = Double(rgbValue & 0x0000FF) / 255.0
+
+        self.init(.sRGB, red: red, green: green, blue: blue, opacity: 1.0)
+    }
+}
+
+
+//
+//  SettingsView.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftUI
+
+struct SettingsView: View {
+    @Binding var user: [User]
+    @EnvironmentObject var appSettings: AppSettings
+    @Environment(\.presentationMode) var presentationMode
+    @State private var selectedTab: String = "General"
+    
+    var body: some View {
+        VStack {
+            // Close Button
+            HStack {
+                Spacer()
+                Button(action: {
+                    presentationMode.wrappedValue.dismiss()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18, weight: .regular))
+                        .padding(8)
+                }
+            }
+            
+            HStack {
+                // Sidebar Navigation
+                List(selection: $selectedTab) {
+                    Text("General").tag("General")
+                    Text("Appearance").tag("Appearance")
+                    Text("Departments").tag("Departments") // New Departments Tab
+                }
+                .frame(minWidth: 200)
+                .listStyle(SidebarListStyle())
+                
+                // Content Area
+                VStack {
+                    if selectedTab == "General" {
+                        GeneralView()
+                            .environmentObject(appSettings) // Pass settings to child view
+                    } else if selectedTab == "Appearance" {
+                        AppearanceView()
+                            .environmentObject(appSettings) // Pass settings to child view
+                    } else if selectedTab == "Departments" {
+                        DepartmentSettingsView(departments: .constant(appSettings.departmentList))
+                            .environmentObject(appSettings) // Pass settings to child view
+                            .onAppear {
+                                // Use user data to update departments
+                                appSettings.updateDepartmentList(from: user)
+                            }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(minWidth: 800, minHeight: 600)
+        }
+        .onAppear {
+            appSettings.loadDepartmentColors() // Ensure colors are loaded
+        }
+    }
+}
+
+struct GeneralView: View {
+    @EnvironmentObject var appSettings: AppSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Version: \(appSettings.getAppVersion())")
+                .font(.headline)
+            Toggle("Enable Auto Save", isOn: $appSettings.autoSaveEnabled)
+            Spacer()
+        }
+        .padding()
+    }
+}
+
+struct AppearanceView: View {
+    @EnvironmentObject var appSettings: AppSettings
+
+    var body: some View {
+        Form {
+            Section(header: Text("Theme")) {
+                Picker("Theme", selection: $appSettings.themePreference) {
+                    Text("System Default").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .onChange(of: appSettings.themePreference) { newValue in
+                    applyTheme(for: newValue) // Apply the theme with the new value
+                }
+            }
+
+            Section(header: Text("Colors")) {
+                ColorPicker("Primary Color", selection: $appSettings.primaryColor, supportsOpacity: false)
+                    .padding(.vertical, 5)
+
+                ColorPicker("Hover Accent", selection: $appSettings.hoverAccentColor, supportsOpacity: false)
+                    .padding(.vertical)
+                
+                ColorPicker("Primary Text Color", selection: $appSettings.primaryTextColor, supportsOpacity: false)
+                    .padding(.vertical, 5)
+                
+                ColorPicker("Secondary Text Color", selection: $appSettings.secondaryTextColor, supportsOpacity: false)
+                    .padding(.vertical)
+            }
+        }
+        .padding()
+    }
+    // Apply the theme based on user selection
+    private func applyTheme(for theme: String) {
+        switch theme {
+        case "light":
+            NSApplication.shared.appearance = NSAppearance(named: .aqua)
+        case "dark":
+            NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        default:
+            NSApplication.shared.appearance = nil // Use system default
+        }
+    }
+}
+
+struct DepartmentSettingsView: View {
+    @Binding var departments: [String] // List of department codes
+    @EnvironmentObject var appSettings: AppSettings
+
+    @State private var departmentAliases: [String: String] = [:] // Alias mapping
+    @State private var departmentColors: [String: String] = [:] // Store hex strings directly
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Department Settings")
+                .font(.headline)
+                .padding(.top)
+            
+            List {
+                ForEach(appSettings.departmentList, id: \.self) { department in
+                    HStack {
+                        Text(department)
+                            .frame(width: 100, alignment: .leading)
+                            .font(.body)
+                            .bold()
+                        
+                        TextField("Alias", text: Binding(
+                            get: { departmentAliases[department] ?? department },
+                            set: { departmentAliases[department] = $0 }
+                        ))
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(maxWidth: .infinity)
+                        
+                        ColorPicker("", selection: Binding(
+                            get: {
+                                Color(hex: appSettings.departmentColors[department] ?? "#FFFFFF") ?? .white
+                            },
+                            set: { newColor in
+                                appSettings.departmentColors[department] = newColor.toHex() ?? "#FFFFFF"
+                            }
+                        ))
+                        .labelsHidden()
+                        .frame(width: 50)
+                    }
+                    .padding(4) // Add padding to each row
+                    .background(Color.gray.opacity(0.1)) // Add subtle background color
+                    .cornerRadius(8) // Round corners for better UI aesthetics
+                }
+            }
+            
+            
+            Button("Save Settings") {
+                saveSettings()
+            }
+            .padding(.top)
+        }
+        .padding()
+        .onAppear{
+            appSettings.loadDepartmentColors()
+            
+        }
+    }
+    // Save aliases and colors to AppSettings
+    private func saveSettings() {
+        appSettings.departmentAliases = departmentAliases
+        appSettings.departmentColors = departmentColors // Direct assignment, as types match
+    }
+
+    private func loadSettings() {
+        departmentAliases = appSettings.departmentAliases
+        departmentColors = appSettings.departmentColors // Direct assignment, as types match
+    }
+}
+//
+//  CardView.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftUI
+
+struct UserCardView: View {
+    let userID: String
+    let firstName: String
+    let lastName: String
+    let divisionID: String
+    let position: String
+    let rating: Int
+    let currentLabel: String?
+    let color: Color // Card color
+    let iconColor: Color // Icon color
+
+    
+    @ObservedObject var notesViewModel: NotesViewModel // Observing the NotesViewModel
+    @State private var selectedImpact: String = "Moderate"
+    @State private var selectedRisk: String = "Moderate 1-2 years"
+    @State private var iconColorImpact: Color = .gray
+    @State private var iconColorRisk: Color = .gray
+    @State private var notes: String = "" // State for storing the notes text
+    @State private var isNotesOpen: Bool = false // Toggle for showing the notes TextEditor
+    
+    @EnvironmentObject var appSettings: AppSettings
+    
+    
+    
+    // Initializer to pass the unique user ID to the ViewModel
+    init(userID: String, firstName: String, lastName: String, divisionID: String, position: String, rating: Int, currentLabel: String, color: Color, iconColor: Color) {
+        self.userID = userID
+        self.firstName = firstName
+        self.lastName = lastName
+        self.divisionID = divisionID
+        self.position = position
+        self.rating = rating
+        self.currentLabel = nil
+        self.color = color
+        self.iconColor = iconColor
+        // Create a unique instance of NotesViewModel for each user
+        _notesViewModel = ObservedObject(wrappedValue: NotesViewModel(userID: userID))
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(color) // Use the fixed department color
+                .frame(height: 150) // Adjust height to match your design
+                .shadow(radius: 4)
+
+            RoundedRectangle(cornerRadius: 4)
+                .fill(.white)
+                .opacity(0.8)
+                .frame(height: 130) // Adjust height to match your design
+                .shadow(radius: 4)
+            
+            VStack {
+                // Top Section with HR, Name, and Role
+                HStack(spacing: 8) {
+                    // Division (HR)
+                    Text(divisionID)
+                        .font(.subheadline)
+                        .bold()
+                        .foregroundColor(.black)
+                        .frame(width: 60, alignment: .center) // Fixed width for alignment
+                    
+                    Divider()
+                        .frame(height: 50) // Vertical divider
+                        .background(Color.black)
+                        .opacity(0.8)
+                    
+                    // User Info
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(userID) \(firstName) \(lastName)")
+                            .font(.headline)
+                            .bold()
+                            .foregroundColor(.black)
+                        Text(position)
+                            .font(.subheadline)
+                            .foregroundColor(.black)
+                    }
+                    
+                    Spacer() // Push content to the left
+                    
+                    
+                    
+                    // Icon and Rating
+                    VStack(spacing: 8) {
+                        if let label = currentLabel {
+                            Image(systemName: iconName(for: label))
+                                .imageScale(.large)
+                                .foregroundColor(iconColor) // Dynamic icon color
+                        } else {
+                            Image(systemName: "person.fill.questionmark")
+                                .imageScale(.large)
+                                .foregroundColor(.blue)
+                        }
+                        
+                        Text("\(rating)")
+                            .font(.largeTitle)
+                            .bold()
+                            .foregroundColor(rating >= 3 ? .green : .red)
+                    }
+                }
+                .padding([.leading, .trailing])
+
+                Spacer() // Pushes the content up towards the center
+                
+                // Bottom Section for Dropped Skills
+                HStack {
+                        // Bottom Section for Impact, Risk, and Icons
+                        Menu {
+                            Button("Critical") {
+                                selectedImpact = "Critical"
+                                iconColorImpact = .red
+                            }
+                            Button("High") {
+                                selectedImpact = "High"
+                                iconColorImpact = .orange
+                            }
+                            Button("Moderate") {
+                                selectedImpact = "Moderate"
+                                iconColorImpact = .yellow
+                            }
+                            Button("Low") {
+                                selectedImpact = "Low"
+                                iconColorImpact = .green
+                            }
+                        } label: {
+                            VStack {
+                                // Label for Impact
+                                Text("Impact")
+                                    .font(.caption)
+                                    .foregroundColor(.black)
+                                    .frame(maxWidth: .infinity) // Ensures it is centered
+                                
+                                // Icon for Impact
+                                Image(systemName: "exclamationmark.warninglight.fill")
+                                    .foregroundColor(iconColorImpact)
+                                    .imageScale(.large)
+                            }
+                            .frame(width: 50, height: 50)
+                        }
+                        .buttonStyle(PlainButtonStyle()) // Prevents default dropdown styling
+                        // Risk Icon with Dropdown Menu
+                        Menu {
+                            Button("Extreme >6 months") {
+                                selectedRisk = "Extreme >6 months"
+                                iconColorRisk = .red
+                            }
+                            Button("High >12 months") {
+                                selectedRisk = "High >12 months"
+                                iconColorRisk = .orange
+                            }
+                            Button("Moderate 1-2 years") {
+                                selectedRisk = "Moderate 1-2 years"
+                                iconColorRisk = .yellow
+                            }
+                            Button("Low 3+ years") {
+                                selectedRisk = "Low 3+ years"
+                                iconColorRisk = .green
+                            }
+                        } label: {
+                            VStack {
+                                // Label for Risk
+                                Text("Risk")
+                                    .font(.caption)
+                                    .foregroundColor(.black)
+                                    .frame(maxWidth: .infinity) // Ensures it is centered
+                                
+                                Image(systemName: "shield.pattern.checkered")
+                                    .foregroundColor(iconColorRisk)
+                                    .imageScale(.large)
+                            }
+                            .frame(width: 50, height: 50)
+                        }
+                        .buttonStyle(PlainButtonStyle()) // Prevents default dropdown styling
+                    // Notes Section with Pen Icon
+                    Button(action: {
+                            // Toggle visibility of the Notes TextEditor
+                            isNotesOpen.toggle()
+                        }) {
+                            VStack {
+                                Text("Notes")
+                                    .font(.caption)
+                                    .foregroundColor(.black)
+
+                                // Pen Icon that changes color when notes are written
+                                Image(systemName: "bubble.and.pencil")
+                                    .foregroundColor(notesViewModel.notes.isEmpty ? .gray : .blue) // Change icon color based on notes
+                                    .imageScale(.large)
+                            }
+                            .frame(width: 50, height: 50)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+
+
+                    // Placeholder Icons
+
+                        ForEach(0..<3) { _ in
+                            Image(systemName: "circle.grid.3x3.circle.fill")
+                                .imageScale(.small)
+                                .foregroundColor(.gray)
+                        }
+                        .frame(width: 50, height: 50)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+            .padding([.top, .bottom], 10) // Adjust top and bottom padding to reduce white space
+            // Overlay the TextEditor on top of the card
+            if isNotesOpen {
+                NotesOverlay(notes: $notesViewModel.notes, isNotesOpen: $isNotesOpen)
+            }
+        }
+        .cornerRadius(12)
+    }
+
+    // Map grid label to corresponding icon name
+    func iconName(for label: String) -> String {
+        switch label {
+        case "Potential Gem": return "square.grid.3x3.topleft.filled"
+        case "High Potential": return "square.grid.3x3.topmiddle.filled"
+        case "Star": return "square.grid.3x3.topright.filled"
+        case "Inconsistent Player": return "square.grid.3x3.middleleft.filled"
+        case "Core Player": return "square.grid.3x3.middle.filled"
+        case "High Performer": return "square.grid.3x3.middleright.filled"
+        case "Risk": return "square.grid.3x3.bottomleft.filled"
+        case "Average Performer": return "square.grid.3x3.bottommiddle.filled"
+        case "Solid Performer": return "square.grid.3x3.bottomright.filled"
+        default: return "circle.grid.3x3.circle.fill"
+        }
+    }
+}
+
+struct NotesOverlay: View {
+    @Binding var notes: String
+    @Binding var isNotesOpen: Bool
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.4) // Background overlay
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack {
+                HStack {
+                    Spacer() // Pushes the icon to the right
+                    Button(action: {
+                        isNotesOpen = false // Close the TextEditor
+                    }) {
+                        Image(systemName: "xmark.circle.fill") // Close icon
+                            .foregroundColor(.black)
+                            .imageScale(.large)
+                    }
+                    .padding()
+                }
+                
+                TextEditor(text: $notes) // TextEditor for taking notes
+                    .frame(height: 150)
+                    .padding()
+                    .border(Color.gray, width: 1)
+                    .background(Color.white)
+                    .cornerRadius(8)
+                
+            }
+            .frame(width: 300)
+            .background(Color.white)
+            .cornerRadius(10)
+        }
+        .transition(.move(edge: .bottom)) // Smooth transition when opening/closing
+    }
+}
+//
+//  SidebarView.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftUI
+
+struct SidebarView: View {
+    @EnvironmentObject var appSettings: AppSettings // Access shared app settings
+    @Binding var users: [User] // Bind users array for two-way data flow
+    @Binding var selectedDepartment: String?  // Track selected department for filtering
+    
+    @State private var selectedTab = "Users"
+    @State private var allDepartments: [String] = [] // Dynamically updated list of all departments
+
+    // Tracks whether all users from a department have been placed
+    func isDepartmentPlaced(department: String) -> Bool {
+        !users.contains { $0.prGroup2025 == department }
+    }
+
+    // Filtered users based on the selected department
+    var filteredUsers: [User] {
+        if let department = selectedDepartment, !department.isEmpty {
+            return users.filter { $0.prGroup2025 == department }
+        }
+        return users
+    }
+
+    var body: some View {
+        VStack {
+            // Tabs Picker
+            Picker("Tabs", selection: $selectedTab) {
+                Text("Users").tag("Users")
+                Text("Skills").tag("Skills")
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding()
+            .background(appSettings.primaryColor) // Use dynamic color
+            
+            if selectedTab == "Users" {
+                // Department Filter
+                Picker("Department", selection: $selectedDepartment) {
+                    Text("All").tag(String?.none) // Option for no filter
+                    ForEach(allDepartments, id: \.self) { department in
+                        HStack {
+                            if isDepartmentPlaced(department: department) {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.green)
+                            }
+                            Spacer() // Push the checkmark to the right
+                            Text(department)
+                                .foregroundColor(isDepartmentPlaced(department: department) ? .green : .primary)
+
+
+                        }
+                        .tag(String?(department))
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .padding([.leading, .trailing])
+                .background(appSettings.primaryColor.opacity(0.1)) // Filter background
+                .cornerRadius(8)
+                .padding(.bottom, 8)
+
+                // Display user cards
+                ScrollView {
+                    ForEach(filteredUsers, id: \.userID) { user in
+                        UserCardView(
+                            userID: user.userID,
+                            firstName: user.firstName,
+                            lastName: user.lastName,
+                            divisionID: user.prGroup2025,
+                            position: user.currentPosition,
+                            rating: Int(user.pr2024 ?? 0),
+                            currentLabel: "",  // Pass a default label if none exists
+                            color: Color(hex: appSettings.departmentColors[user.prGroup2025] ?? "FFFFFF") ?? .white, // Department-based background color
+                            iconColor: .blue // Sidebar icon color
+                        )
+                        .onDrag {
+                            if let jsonData = try? JSONEncoder().encode(user),
+                               let jsonString = String(data: jsonData, encoding: .utf8) {
+                                return NSItemProvider(object: jsonString as NSString)
+                            }
+                            return NSItemProvider() // Fallback
+                        }
+                    }
+                }
+            } else {
+                // Skills List
+                List {
+                    Text("Skill 1")
+                        .foregroundColor(appSettings.hoverAccentColor)
+                    Text("Skill 2")
+                        .foregroundColor(appSettings.hoverAccentColor)
+                    Text("Skill 3")
+                        .foregroundColor(appSettings.hoverAccentColor)
+                }
+            }
+        }
+        .frame(minWidth: 200)
+        .background(appSettings.primaryColor.opacity(0.1)) // Dynamic background
+        .onAppear(perform: updateDepartments) // Ensure departments are dynamically populated
+    }
+
+    // Function to update the list of all departments dynamically
+    private func updateDepartments() {
+        // Collect all unique departments from the users array, including already placed users
+        let departments = Set(users.compactMap { $0.prGroup2025 })
+        allDepartments = Array(departments).sorted()
+    }
+}
+
+//
+//  GridView.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftUI
+
+struct GridView: View {
+    @Binding var users: [User]
+    @EnvironmentObject var appSettings: AppSettings // Access shared app settings
+    @State private var gridData: [String: [User]] = [
+        "Master/Mentor": [],
+        "Emerging Talent": [],
+        "Top Talent": [],
+        "Professional": [],
+        "Solid Talent": [],
+        "Rising Talent": [],
+        "Low Performer": [],
+        "Misaligned Talent": [],
+        "Budding Talent": []
+    ]
+    @Binding var selectedDepartment: String? // Connect filter state for hiding users
+    let gridColumns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    let gridLabels = [
+        "Master/Mentor", "Emerging Talent", "Top Talent",
+        "Professional", "Solid Talent", "Rising Talent",
+        "Low Performer", "Misaligned Talent", "Budding Talent"
+    ]
+    @StateObject var notesViewModel = NotesViewModel(userID: "") // Initializing with an empty userID or dynamic value
+    var body: some View {
+        VStack {
+            LazyVGrid(
+                columns: gridColumns,
+                spacing: 8
+            ){
+                ForEach(gridLabels, id: \.self) { label in
+                    GridCellView(
+                        gridData: $gridData,  // Pass gridData as a binding
+                        users: $users,  // Pass users as a binding
+                        selectedDepartment: $selectedDepartment,
+                        label: label,
+                        iconColor: iconColor(for: label),
+                        tintColor: tintColor(for: label),
+                        descriptionText: description(for: label),
+                        appSettings: appSettings,
+                        iconName: iconName(for: label),
+                        iconColorFunc: iconColor(for:),
+                        notesViewModel: notesViewModel
+                    )
+                }
+            }
+            
+            .padding()
+            .background(
+                appSettings.themePreference == "dark"
+                    ? Color.black.opacity(0.8)
+                    : Color.gray.opacity(0.0)
+            )
+            .cornerRadius(12)
+        }
+        .padding()
+    }
+    
+    func tintColor(for label: String) -> Color {
+        iconColor(for: label).opacity(0.1) // Reduce opacity to 80% for a lighter color
+    }
+    
+    func iconColor(for label: String) -> Color {
+        switch label {
+        case "Master/Mentor": return Color(hex: "274973") ?? .purple
+        case "Emerging Talent": return Color(hex: "92C0C1") ?? .blue
+        case "Top Talent": return Color(hex: "597864") ?? .green
+        case "Professional": return Color(hex: "FECB86") ?? .orange
+        case "Solid Talent": return Color(hex: "274973") ?? .purple
+        case "Rising Talent": return Color(hex: "92C0C1") ?? .blue
+        case "Low Performer": return Color(hex: "BF4228") ?? .red
+        case "Misaligned Talent": return Color(hex: "FECB86") ?? .orange
+        case "Budding Talent": return Color(hex: "274973") ?? .purple
+        default: return Color(hex: "BF4228")  ?? .red // Default to red for unknown cases
+        }
+    }
+    
+    func iconName(for label: String) -> String {
+        switch label {
+        case "Master/Mentor": return "square.grid.3x3.topleft.filled"
+        case "Emerging Talent": return "square.grid.3x3.topmiddle.filled"
+        case "Top Talent": return "square.grid.3x3.topright.filled"
+        case "Professional": return "square.grid.3x3.middleleft.filled"
+        case "Solid Talent": return "square.grid.3x3.middle.filled"
+        case "Rising Talent": return "square.grid.3x3.middleright.filled"
+        case "Low Performer": return "square.grid.3x3.bottomleft.filled"
+        case "Misaligned Talent": return "square.grid.3x3.bottommiddle.filled"
+        case "Budding Talent": return "square.grid.3x3.bottomright.filled"
+        default: return "circle.grid.3x3.circle.fill" // Default icon for unknown cases
+        }
+    }
+
+    // Description for each grid cell
+    func description(for label: String) -> String {
+        switch label {
+        case "Master/Mentor": return "High Potential / Low Performance"
+        case "Emerging Talent": return "High Potential / Moderate Performance"
+        case "Top Talent": return "High Potential / High Performance"
+        case "Professional": return "Moderate Potential / Low Performance"
+        case "Solid Talent": return "Moderate Potential / Moderate Performance"
+        case "Rising Talent": return "Moderate Potential / High Performance"
+        case "Low Performer": return "Low Potential / Low Performance"
+        case "Misaligned Talent": return "Low Potential / Moderate Performance"
+        case "Budding Talent": return "Low Potential / High Performance"
+        default: return ""
+        }
+    }
+
+
+
+    // Determine whether a user should be shown based on the filter
+    func shouldShowUser(user: User) -> Bool {
+        if let department = selectedDepartment, !department.isEmpty {
+            return user.prGroup2025 == department
+        }
+        return true
+    }
+}
+
+
+//
+//  ContentView.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftUI
+import UniformTypeIdentifiers
+import CodableCSV
+
+struct ContentView: View {
+    @State private var isSettingsPresented = false
+    @EnvironmentObject var appSettings: AppSettings
+
+    // Users loaded from CSV
+    @State private var users: [User] = []
+    
+    // State for filters
+    @State private var selectedPRGroup: String? = nil
+    @State private var selectedReportsTo: String? = nil
+    @State private var isImporting = false
+    @State private var isExporting = false
+    @State private var fileURL: URL?
+
+    var filteredUsers: [User] {
+        users.filter { user in
+            (selectedPRGroup == nil || user.prGroup2025 == selectedPRGroup) &&
+            (selectedReportsTo == nil || user.reportsTo == selectedReportsTo)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Top Bar
+            ZStack(alignment: .center)  {
+                Color(appSettings.themePreference == "dark" ? .black : .white)
+                    .edgesIgnoringSafeArea(.top)
+
+                HStack {
+                    Spacer()
+                    Image(systemName: "rectangle.grid.3x3")
+                        .imageScale(.large)
+                        .foregroundColor(appSettings.themePreference == "dark" ? .white : .black)
+                    
+                    Text("9-Box Succession Planning")
+                        .font(.largeTitle)
+                        .foregroundColor(appSettings.themePreference == "dark" ? .white : .black)
+                        .padding()
+                    
+                    Spacer()
+
+                    // **Import Button**
+                    Button {
+                        isImporting = true
+                    } label: {
+                        Label("Import CSV", systemImage: "tray.and.arrow.down")
+                    }
+                    .fileImporter(
+                        isPresented: $isImporting,
+                        allowedContentTypes: [UTType.commaSeparatedText],
+                        allowsMultipleSelection: false
+                    ) { result in
+                        do {
+                            if let fileURL = try result.get().first {
+                                importCSV(from: fileURL)
+                            }
+                        } catch {
+                            print("Error selecting file: \(error)")
+                        }
+                    }
+                    .padding(.trailing)
+
+                    // **Export Button**
+                    Button {
+                        isExporting = true
+                    } label: {
+                        Label("Export CSV", systemImage: "tray.and.arrow.up")
+                    }
+                    .fileExporter(
+                        isPresented: $isExporting,
+                        document: CSVDocument(content: exportCSVString()),
+                        contentType: .commaSeparatedText,
+                        defaultFilename: "9BoxExport.csv"
+                    ) { result in
+                        switch result {
+                        case .success(let url):
+                            print("Export successful: \(url)")
+                        case .failure(let error):
+                            print("Failed to export CSV: \(error)")
+                        }
+                    }
+                    .padding(.trailing)
+
+                    // Settings Button
+                    Button {
+                        isSettingsPresented = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .imageScale(.large)
+                            .foregroundColor(appSettings.themePreference == "dark" ? .white : .black)
+                    }
+                    .sheet(isPresented: $isSettingsPresented) {
+                        SettingsView(user: $users)
+                            .environmentObject(appSettings)
+                    }
+                    .padding(.trailing)
+                }
+                .padding(.horizontal)
+            }
+            .frame(height: 40)
+
+            // Filter Section
+            HStack {
+                // PR Group Filter
+                Picker("PR Group 2025", selection: $selectedPRGroup) {
+                    Text("All").tag(nil as String?)
+                    ForEach(Array(Set(users.map { $0.prGroup2025 })).sorted(), id: \.self) { prGroup in
+                        Text(prGroup).tag(prGroup as String?)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .padding()
+
+                // Reports To Filter
+                Picker("Reports To", selection: $selectedReportsTo) {
+                    Text("All").tag(nil as String?)
+                    ForEach(Array(Set(users.map { $0.reportsTo })).sorted(), id: \.self) { manager in
+                        Text(manager).tag(manager as String?)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .padding()
+            }
+
+            // Main Content
+            NavigationView {
+                SidebarView(users: $users, selectedDepartment: .constant(nil))
+                ScrollView([.vertical, .horizontal]) {
+                    GridView(users: $users, selectedDepartment: .constant(nil))
+                        .padding()
+                }
+            }
+            .background(appSettings.themePreference == "dark" ? Color.black.opacity(0.9) : Color.gray.opacity(0.1))
+            .navigationViewStyle(DoubleColumnNavigationViewStyle())
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appSettings.themePreference == "dark" ? Color.black : Color.white)
+    }
+
+    // **Function to Import CSV**
+    func importCSV(from fileURL: URL) {
+        do {
+            if fileURL.startAccessingSecurityScopedResource() {
+                defer { fileURL.stopAccessingSecurityScopedResource() }
+
+                let content = try String(contentsOf: fileURL)
+                
+                // Use CodableCSV to properly parse quoted fields
+                let decoder = CSVDecoder {
+                    $0.headerStrategy = .firstLine
+                    $0.delimiters = (",", "\n")  // Standard CSV delimiter
+                }
+
+                let importedUsers = try decoder.decode([User].self, from: content.data(using: .utf8)!)
+                self.users = importedUsers
+            }
+        } catch {
+            print("Failed to load CSV: \(error)")
+        }
+    }
+
+    // **Function to Export CSV as String**
+    func exportCSVString() -> String {
+        let csvHeader = "PR Group 2025,User ID,District,First Name,Last Name,Current Position,Current Temp Position,Grade,Dept,Sub Function,Last Hire Date,TOP,YOS,Reports To,PR 2021,PR 2022,PR 2023,PR 2024,User 9Box 2024,Criticality of Role,Attrition Risk,Potential Successor,Successor’s Readiness,Successor Development,PR Notes\n"
+        let csvRows = users.map { user in user.toCSV() }
+        return csvHeader + csvRows.joined(separator: "\n")
+    }
+}
+
+// **Helper: Convert CSV String to Document for Export**
+struct CSVDocument: FileDocument {
+    var content: String
+    static var readableContentTypes: [UTType] { [.commaSeparatedText] }
+
+    init(content: String) {
+        self.content = content
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        self.content = ""
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        return FileWrapper(regularFileWithContents: content.data(using: .utf8)!)
+    }
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+            .environmentObject(AppSettings()) // Provide a mock AppSettings for preview
+    }
+}
+//
+//  GridCellView.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/16/25.
+//
+
+import SwiftUI
+
+struct GridCellView: View {
+    @Binding var gridData: [String: [User]]
+    @Binding var users: [User]
+    @Binding var selectedDepartment: String?
+    let label: String
+    let iconColor: Color
+    let tintColor: Color
+    let descriptionText: String
+    let appSettings: AppSettings
+    let iconName: String
+    let iconColorFunc: (String) -> Color
+    @ObservedObject var notesViewModel: NotesViewModel
+    //@State private var currentLabel: String? = nil
+    
+    init(
+        gridData: Binding<[String: [User]]>,
+        users: Binding<[User]>,
+        selectedDepartment: Binding<String?>,
+        label: String,
+        iconColor: Color,
+        tintColor: Color,
+        descriptionText: String,
+        appSettings: AppSettings,
+        iconName: String,
+        iconColorFunc: @escaping (String) -> Color,
+        notesViewModel: NotesViewModel
+
+    ) {
+        self._gridData = gridData
+        self._users = users
+        self._selectedDepartment = selectedDepartment
+        self.label = label
+        self.iconColor = iconColor
+        self.tintColor = tintColor
+        self.descriptionText = descriptionText
+        self.appSettings = appSettings
+        self.iconName = iconName
+        self.iconColorFunc = iconColorFunc
+        self.notesViewModel = notesViewModel
+
+    }
+    
+    // Use helper variables to simplify the body
+    private var roundedRectangle: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(tintColor)
+            .shadow(color: appSettings.hoverAccentColor.opacity(0.5), radius: 4, x: 0, y: 2)
+    }
+
+    private var headerText: some View {
+        HStack {
+            Spacer()
+            Text(label)
+                .font(.headline)
+                .foregroundColor(appSettings.primaryTextColor)
+                .padding(.bottom, 4)
+            Spacer()
+            Image(systemName: iconName)
+                .imageScale(.large)
+                .foregroundColor(iconColor)
+                .padding(.trailing)
+        }
+    }
+
+    private var description: some View {
+        Text(descriptionText)
+            .font(.subheadline)
+            .foregroundColor(appSettings.primaryTextColor)
+    }
+
+    var body: some View {
+        ZStack {
+            roundedRectangle
+            contentView
+        }
+        .padding()
+        .frame(minWidth: 450, minHeight: 400)
+        .onDrop(of: ["public.text"], isTargeted: nil) { providers in
+            handleDrop(for: label, providers: providers)
+        }
+    }
+
+    private var contentView: some View {
+        VStack {
+            headerText
+            description
+            usersScrollView
+        }
+    }
+
+    private var usersScrollView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                // Ensure gridData[label] is safely unwrapped
+                if let gridUsers = gridData[label] {
+                    let filteredUsers = gridUsers.filter { shouldShowUser(user: $0) }
+                    ForEach(filteredUsers, id: \.userID) { user in
+                        UserCardView(
+                            userID: user.userID,
+                            firstName: user.firstName,
+                            lastName: user.lastName,
+                            divisionID: user.prGroup2025,
+                            position: user.currentPosition,
+                            rating: Int(user.pr2024 ?? 0),
+                            //currentLabel: $currentLabel,
+                            currentLabel: label, // Pass the grid's label to the card
+                            color: Color(hex: appSettings.departmentColors[user.prGroup2025] ?? "FFFFFF") ?? .white,
+                            iconColor: iconColorFunc(label) // Dynamic icon color
+                        )
+                        .onDrag {
+                            // Prepare user data for dragging
+                            if let jsonData = try? JSONEncoder().encode(user),
+                               let jsonString = String(data: jsonData, encoding: .utf8) {
+                                return NSItemProvider(object: jsonString as NSString)
+                            }
+                            return NSItemProvider()
+                        }
+                    }
+                    
+                    } else {
+                        Text("No users available")
+                    }
+            }
+            }
+        }
+    
+    // Handle drop events for drag-and-drop functionality
+    func handleDrop(for label: String, providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            provider.loadItem(forTypeIdentifier: "public.text", options: nil) { (item, error) in
+                if let data = item as? Data, let userInfo = String(data: data, encoding: .utf8) {
+                    if let user = try? JSONDecoder().decode(User.self, from: userInfo.data(using: .utf8)!) {
+                        DispatchQueue.main.async {
+                            // Remove user from the sidebar
+                            if let index = users.firstIndex(where: { $0.userID == user.userID }) {
+                                users.remove(at: index)
+                            }
+
+                            // Remove user from all grid cells
+                            for key in gridData.keys {
+                                gridData[key]?.removeAll { $0.userID == user.userID }
+                            }
+
+                            // Add user to the target grid cell
+                            if gridData[label] == nil {
+                                gridData[label] = []
+                            }
+                            var updatedUser = user
+                            updatedUser.currentLabel = label
+                            gridData[label]?.append(updatedUser)
+                        }
+                    }
+                }
+            }
+            return true
+        }
+        return false
+    }
+
+    // Helper function to filter which users should be displayed
+    func shouldShowUser(user: User) -> Bool {
+        if let department = selectedDepartment, !department.isEmpty {
+            return user.prGroup2025 == department
+        }
+        return true
+    }
+}
+//
+//  _BoxApp.swift
+//  9Box
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import SwiftData
+import SwiftUI
+
+@main
+struct nineBoxApp: App {
+    @StateObject private var appSettings = AppSettings()
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(appSettings) // Pass AppSettings to the environment
+                .preferredColorScheme(appSettings.colorScheme) // Dynamically set the color scheme
+        }
+        .commands {
+            CommandGroup(replacing: .appInfo) {}
+        }
+    }
+}
+
+
+//
+//  _BoxUITests.swift
+//  9BoxUITests
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import XCTest
+
+final class _BoxUITests: XCTestCase {
+
+    override func setUpWithError() throws {
+        // Put setup code here. This method is called before the invocation of each test method in the class.
+
+        // In UI tests it is usually best to stop immediately when a failure occurs.
+        continueAfterFailure = false
+
+        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
+    }
+
+    override func tearDownWithError() throws {
+        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    }
+
+    @MainActor
+    func testExample() throws {
+        // UI tests must launch the application that they test.
+        let app = XCUIApplication()
+        app.launch()
+
+        // Use XCTAssert and related functions to verify your tests produce the correct results.
+    }
+
+    @MainActor
+    func testLaunchPerformance() throws {
+        if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
+            // This measures how long it takes to launch your application.
+            measure(metrics: [XCTApplicationLaunchMetric()]) {
+                XCUIApplication().launch()
+            }
+        }
+    }
+}
+//
+//  _BoxUITestsLaunchTests.swift
+//  9BoxUITests
+//
+//  Created by Donald Jordan on 1/10/25.
+//
+
+import XCTest
+
+final class _BoxUITestsLaunchTests: XCTestCase {
+
+    override class var runsForEachTargetApplicationUIConfiguration: Bool {
+        true
+    }
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    @MainActor
+    func testLaunch() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // Insert steps here to perform after app launch but before taking a screenshot,
+        // such as logging into a test account or navigating somewhere in the app
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Launch Screen"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}
