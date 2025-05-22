@@ -1,3 +1,4 @@
+std::collections::HashMap
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -57,10 +58,10 @@ pub struct GridBox {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct GridState {
-    pub assignments: std::collections::HashMap<String, Vec<String>>, // GridBox ID to Vec<Employee UserID>
-}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct GridState {{
+    pub assignments: std::collections::HashMap<String, Vec<String>>,
+}}
 
 // Application Settings
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
