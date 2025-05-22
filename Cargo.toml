@@ -4,5 +4,3 @@ members = [
     "core",
     "ui",
 ]
-
-workplace = { edition = "2021" }

@@ -1,5 +1,6 @@
-use iced::{Application, Command, Element, executor, Subscription};
 use iced::widget::{Column, Button, Text};
+use iced::{Application, Command, Element, executor, Subscription, Theme};
+
 
 /// The application state
 pub struct NineBoxApp;
@@ -13,7 +14,7 @@ pub enum Message {
 impl Application for NineBoxApp {
     type Executor = executor::Default;
     type Message = Message;
-    type Theme = iced::Theme;
+    type Theme = Theme;
     type Flags = ();
 
     /// Called once when the app starts
@@ -29,8 +30,10 @@ impl Application for NineBoxApp {
 
     /// Handle incoming messages (e.g. button presses)
     fn update(&mut self, message: Message) -> Command<Message> {
-        if let Message::ImportCsv = message {
-            println!("Import CSV clicked");
+        match message {
+            Message::ImportCsv => {
+                println!("Import CSV clicked");
+            }
         }
         Command::none()
     }

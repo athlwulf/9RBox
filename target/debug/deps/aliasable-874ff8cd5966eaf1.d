@@ -1,0 +1,11 @@
+/Users/donaldjordan/Development/Rust/9RBox/target/debug/deps/libaliasable-874ff8cd5966eaf1.rmeta: /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/lib.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/mut_ref.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/boxed.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/string.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/vec.rs
+
+/Users/donaldjordan/Development/Rust/9RBox/target/debug/deps/libaliasable-874ff8cd5966eaf1.rlib: /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/lib.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/mut_ref.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/boxed.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/string.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/vec.rs
+
+/Users/donaldjordan/Development/Rust/9RBox/target/debug/deps/aliasable-874ff8cd5966eaf1.d: /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/lib.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/mut_ref.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/boxed.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/string.rs /Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/vec.rs
+
+/Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/lib.rs:
+/Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/mut_ref.rs:
+/Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/boxed.rs:
+/Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/string.rs:
+/Users/donaldjordan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aliasable-0.1.3/src/vec.rs:
