@@ -86,12 +86,13 @@ Based on latest UI sketches and feedback:
 ```csv
 Name,Position,PR,Skills,Notes,Box
 John Doe,Software Engineer,4,"Skill 1;Skill 2","Excellent team player","High Performer"
-
+```
 
 **Export CSV Example**
+```
 Name,Position,PR Score,Skills,Notes,Box
 John Doe,Software Engineer,4,Skill 1;Skill 2,Excellent team player,High Performer
-
+```
 6. Timeline
 
 Phase	Task	Duration
