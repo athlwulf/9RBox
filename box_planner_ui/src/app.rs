@@ -217,3 +217,130 @@ impl iced::Application for App {
     //     Theme::default() // Or your custom theme
     // }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*; 
+    // AppSettings is already imported via super::* if App itself is, 
+    // but being explicit for models can be clearer.
+    // Employee and GridState are part of App struct, so super::* covers them.
+    // use box_planner_core::models::{Employee, GridState, AppSettings}; // Not strictly needed if super::* is used well.
+
+    // Helper to create a basic App for testing.
+    // It relies on App::new()'s existing behavior for handling missing files
+    // (falling back to dummy employees and default settings).
+    fn setup_app() -> App {
+        // To prevent tests from creating/modifying actual files in the project directory,
+        // ideally, paths should be configurable or mocked.
+        // For now, we accept that App::new() might try to read/write
+        // "box_planner_ui/app_settings.json" and read "box_planner_ui/sample_employees.csv".
+        // The current App::new() logic falls back to defaults/dummies, which is testable.
+        App::new()
+    }
+
+    #[test]
+    fn test_initial_state() {
+        let app = setup_app();
+        assert_eq!(app.selected_employee_id, None, "Selected employee ID should be None initially.");
+        
+        // Check view_scale based on AppSettings default or loaded settings.
+        // AppSettings::default() sets view_scale to Some(1.0).
+        // App::new() uses this or a value from the file.
+        assert_eq!(app.view_scale, app.app_settings.view_scale.unwrap_or(1.0), "View scale should match settings or default.");
+        assert!(app.view_scale > 0.0, "View scale must be positive.");
+
+        assert!(!app.employees.is_empty(), "Employees list should not be empty (dummy data should load).");
+        
+        // Check default app_settings state (theme_preference is a good indicator)
+        // This implicitly tests that AppSettings::default() was called if file was missing.
+        let default_settings = AppSettings::default();
+        if !Path::new(SETTINGS_FILE_PATH).exists() {
+            assert_eq!(app.app_settings.theme_preference, default_settings.theme_preference, "Theme preference should be default if no settings file.");
+            assert_eq!(app.app_settings.view_scale, default_settings.view_scale, "View scale in settings should be default if no settings file.");
+        } else {
+            // If file exists, we can't easily know its content here without reading it again,
+            // but we know app.app_settings was populated.
+            println!("Note: test_initial_state assumes if settings file exists, it's valid or App::new handled errors.");
+        }
+    }
+
+    #[test]
+    fn test_employee_selected() {
+        let mut app = setup_app();
+        let test_emp_id = "emp_test_id_selected".to_string();
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        assert_eq!(app.selected_employee_id, Some(test_emp_id), "Selected employee ID was not set correctly.");
+    }
+
+    #[test]
+    fn test_scale_changed() {
+        let mut app = setup_app();
+        let new_scale = 1.75;
+        app.update(Message::ScaleChanged(new_scale));
+        assert_eq!(app.view_scale, new_scale, "View scale in App struct was not updated.");
+        assert_eq!(app.app_settings.view_scale, Some(new_scale), "View scale in AppSettings was not updated.");
+        // We expect App::new to create a default settings file if it doesn't exist,
+        // or load existing. Message::ScaleChanged should then save it.
+        // We can check if the file reflects this after the test, but that's more of an integration test.
+        // For unit test, checking the in-memory state is key.
+    }
+
+    #[test]
+    fn test_assign_employee_to_box() {
+        let mut app = setup_app();
+        // App::new() loads dummy employees if CSV fails or is empty.
+        // This test relies on at least one employee being available.
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty, cannot run test.");
+        let test_emp_id = app.employees[0].user_id.clone();
+        let target_box_id = "TestBox_Assign".to_string();
+
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        app.update(Message::BoxClicked(target_box_id.clone()));
+
+        assert!(app.grid_state.assignments.get(&target_box_id).is_some(), "Target box should exist in assignments.");
+        assert!(app.grid_state.assignments.get(&target_box_id).unwrap().contains(&test_emp_id), "Employee was not assigned to the target box.");
+        assert_eq!(app.selected_employee_id, None, "Selected employee ID should be cleared after assignment.");
+    }
+    
+    #[test]
+    fn test_move_employee_between_boxes() {
+        let mut app = setup_app();
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty, cannot run test.");
+        let test_emp_id = app.employees[0].user_id.clone();
+        let initial_box_id = "BoxAlpha_Move".to_string();
+        let target_box_id = "BoxBeta_Move".to_string();
+
+        // First assignment to initial_box_id
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        app.update(Message::BoxClicked(initial_box_id.clone()));
+        
+        // Now select again and move to target_box_id
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        app.update(Message::BoxClicked(target_box_id.clone()));
+
+        assert!(app.grid_state.assignments.get(&target_box_id).is_some(), "Target box for move should exist.");
+        assert!(app.grid_state.assignments.get(&target_box_id).unwrap().contains(&test_emp_id), "Employee was not moved to the target box.");
+        
+        // Check if employee is removed from the old box or if the old box is removed if empty
+        let initial_box_assignments = app.grid_state.assignments.get(&initial_box_id);
+        assert!(initial_box_assignments.map_or(true, |ids| !ids.contains(&test_emp_id)), "Employee was not removed from the initial box.");
+        
+        assert_eq!(app.selected_employee_id, None, "Selected employee ID should be cleared after moving.");
+    }
+    
+    #[test]
+    fn test_click_box_no_employee_selected() {
+        let mut app = setup_app();
+        // Clone initial state of assignments. 
+        // App::new() might populate assignments with dummy data, so we capture that.
+        let initial_assignments = app.grid_state.assignments.clone();
+        let target_box_id = "AnyBox_NoSelect".to_string();
+        
+        app.update(Message::BoxClicked(target_box_id.clone()));
+        
+        // Assert that assignments are unchanged.
+        // If the target_box_id was part of initial_assignments, its content should be the same.
+        // If it wasn't, it should still not be there.
+        assert_eq!(app.grid_state.assignments, initial_assignments, "Assignments should not change if no employee is selected.");
+    }
+}

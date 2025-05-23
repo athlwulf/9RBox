@@ -143,12 +143,12 @@ fn view_9box_grid(app: &App) -> Element<Message> {
                 .spacing(3)
                 .align_items(iced::Alignment::Start); // Align text to the start
 
-            for name in employee_names_in_box {
-                box_content_column = box_content_column.push(Text::new(name).size(11));
+            for name in &employee_names_in_box { // Changed to iterate by reference
+                box_content_column = box_content_column.push(Text::new(name.clone()).size(11)); // Added clone() as name is now &String
             }
             
             // Ensure there's always some content for consistent height if no employees
-            if employee_names_in_box.is_empty() { // Corrected: check the data source
+            if employee_names_in_box.is_empty() { // This check is now valid
                  box_content_column = box_content_column.push(Text::new(" ").size(11)); // Add a space to ensure height
             }
 

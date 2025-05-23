@@ -69,7 +69,7 @@ pub struct AppSettings {
     pub theme_preference: String,
     pub department_colors: HashMap<String, String>,
     pub auto_save_enabled: bool,
-    pub view_scale: Option<f32>,
+    pub view_scale: Option<f32>, // New field
 }
 
 impl Default for AppSettings {
@@ -78,7 +78,7 @@ impl Default for AppSettings {
             theme_preference: "system".to_string(),
             department_colors: HashMap::new(),
             auto_save_enabled: false,
-            view_scale: Some(1.0),
+            view_scale: Some(1.0), // Default view_scale
         }
     }
 }
