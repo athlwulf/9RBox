@@ -1,6 +1,10 @@
 use crate::app::App;
 use crate::messages::Message;
-use iced::widget::{button, column, container, row, rule, scrollable, text, Button, Column, Container, Row, Text}; // Added Button
+// Added Rule to the import list, removed redundant Button, Column, Container, Row, Text which are covered by explicit imports later or not used.
+// The explicit individual imports like `Button, Column, Container, Row, Text` are fine,
+// but `rule` (the module) was being imported, not `Rule` (the struct).
+// Removed unused lowercase 'button' and 'text' module aliases.
+use iced::widget::{column, container, row, scrollable, Button, Column, Container, Row, Rule, Text}; 
 use iced::{Element, Length};
 
 pub fn view_app(app: &App) -> Element<Message> {
@@ -35,7 +39,7 @@ pub fn view_app(app: &App) -> Element<Message> {
         .padding(10),
 
         // Vertical Separator
-        rule::vertical(10),
+        Rule::vertical(10), // Corrected call
 
         // 9-Box Grid Section
         Container::new(
@@ -48,7 +52,7 @@ pub fn view_app(app: &App) -> Element<Message> {
         .padding(10),
 
         // Vertical Separator
-        rule::vertical(10),
+        Rule::vertical(10), // Corrected call
 
         // Details Panel Section
         Container::new({
@@ -63,7 +67,7 @@ pub fn view_app(app: &App) -> Element<Message> {
 
                     column![
                         Text::new("Employee Details").size(20),
-                        rule::horizontal(5), // Visual separator
+                        Rule::horizontal(5), // Corrected call
                         Text::new(name).size(18),
                         Text::new(format!("ID: {}", employee.user_id)),
                         Text::new(format!("Position: {}", employee.current_position)),
@@ -83,14 +87,14 @@ pub fn view_app(app: &App) -> Element<Message> {
                         .width(Length::Fill)
                         .height(Length::Fill) // Ensure it fills space to center vertically
                         .align_items(iced::Alignment::Center)
-                        .justify_content(iced::alignment::Vertical::Center)
+                        // .justify_content(iced::alignment::Vertical::Center) // Removed
                 }
             } else {
                 column![Text::new("Select an employee to view details.")]
                     .width(Length::Fill)
                     .height(Length::Fill) // Ensure it fills space to center vertically
                     .align_items(iced::Alignment::Center)
-                    .justify_content(iced::alignment::Vertical::Center)
+                    // .justify_content(iced::alignment::Vertical::Center) // Removed
             };
             scrollable(details_content) // Wrap the entire details_content in a scrollable
         })
@@ -144,10 +148,9 @@ fn view_9box_grid(app: &App) -> Element<Message> {
             }
             
             // Ensure there's always some content for consistent height if no employees
-            if box_content_column.is_empty() {
+            if employee_names_in_box.is_empty() { // Corrected: check the data source
                  box_content_column = box_content_column.push(Text::new(" ").size(11)); // Add a space to ensure height
             }
-
 
             let grid_box_button = Button::new(
                 Container::new(scrollable(box_content_column)) // Make content scrollable if it overflows

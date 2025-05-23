@@ -1,12 +1,16 @@
 use crate::messages::Message;
 use crate::views::view_app;
-use box_planner_core::csv_processing::import_employees_from_csv;
-use box_planner_core::models::{AppSettings, Employee, GridState}; // Added AppSettings
-use box_planner_core::persistence::{load_app_settings, save_app_settings}; // Added persistence functions
-use iced::{Command, Element, Executor, Subscription, Theme};
-use std::path::Path; // Added Path
+// Corrected to import the function that expects a Reader
+use box_planner_core::csv_processing::import_employees_from_csv; 
+use box_planner_core::models::{AppSettings, Employee, GridState};
+use box_planner_core::persistence::{load_app_settings, save_app_settings};
+use iced::{Command, Element, Theme}; // Removed Executor and Subscription
+use std::fs::File; // Added File
+use std::io::BufReader; // Added BufReader
+use std::path::Path;
 
 const SETTINGS_FILE_PATH: &str = "box_planner_ui/app_settings.json";
+const SAMPLE_EMPLOYEES_CSV_PATH: &str = "box_planner_ui/sample_employees.csv";
 
 pub struct App {
     pub employees: Vec<Employee>,
@@ -47,11 +51,28 @@ impl App {
             default_scale
         });
 
-        let employees = match import_employees_from_csv("box_planner_ui/sample_employees.csv") {
-            Ok(emps) => emps,
+        let employees_load_result = File::open(SAMPLE_EMPLOYEES_CSV_PATH)
+            .map_err(|e| format!("Failed to open CSV file '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e))
+            .and_then(|file| {
+                let reader = BufReader::new(file);
+                // Assuming import_employees_from_csv now correctly takes a Read implementor
+                // and returns Result<Vec<Employee>, E> where E can be converted to our error string.
+                import_employees_from_csv(reader)
+                    .map_err(|e| format!("Failed to parse CSV from '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e.to_string()))
+            });
+
+        let employees = match employees_load_result {
+            Ok(loaded_employees) => {
+                if loaded_employees.is_empty() {
+                    println!("No employees loaded from CSV, using dummy data.");
+                    Self::load_dummy_employees() 
+                } else {
+                    println!("Successfully loaded {} employees from CSV.", loaded_employees.len());
+                    loaded_employees
+                }
+            }
             Err(e) => {
-                eprintln!("Failed to load employees from CSV: {}. Loading dummy data.", e);
-                // Fallback to dummy data if CSV loading fails
+                eprintln!("Error loading employees from CSV: {}. Using dummy data instead.", e);
                 Self::load_dummy_employees()
             }
         };

@@ -1,4 +1,4 @@
-use crate::models::{self, AppSettings}; // Added AppSettings here
+use crate::models; // Added AppSettings here
 use serde_json;
 use std::fs::{self, File};
 use std::io::{Read, Write};
