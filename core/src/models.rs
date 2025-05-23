@@ -1,4 +1,4 @@
-std::collections::HashMap
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -69,6 +69,7 @@ pub struct AppSettings {
     pub theme_preference: String,
     pub department_colors: std::collections::HashMap<String, String>,
     pub auto_save_enabled: bool,
+    pub view_scale: Option<f32>,
 }
 
 impl Default for AppSettings {
@@ -77,6 +78,7 @@ impl Default for AppSettings {
             theme_preference: "system".to_string(),
             department_colors: std::collections::HashMap::new(),
             auto_save_enabled: false,
+            view_scale: Some(1.0),
         }
     }
 }
