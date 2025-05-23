@@ -1,6 +1,6 @@
 use crate::messages::Message;
 use crate::views::view_app;
-use box_planner_core::csv_processing::load_employees_from_csv;
+use box_planner_core::csv_processing::import_employees_from_csv;
 use box_planner_core::models::{AppSettings, Employee, GridState}; // Added AppSettings
 use box_planner_core::persistence::{load_app_settings, save_app_settings}; // Added persistence functions
 use iced::{Command, Element, Executor, Subscription, Theme};
@@ -47,7 +47,7 @@ impl App {
             default_scale
         });
 
-        let employees = match load_employees_from_csv("box_planner_ui/sample_employees.csv") {
+        let employees = match import_employees_from_csv("box_planner_ui/sample_employees.csv") {
             Ok(emps) => emps,
             Err(e) => {
                 eprintln!("Failed to load employees from CSV: {}. Loading dummy data.", e);

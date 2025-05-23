@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "core",
-    "ui",
+    "box_planner_core",
+    "box_planner_ui",
 ]
