@@ -1,4 +1,4 @@
-std::collections::HashMap
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -60,23 +60,25 @@ pub struct GridBox {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct GridState {{
-    pub assignments: std::collections::HashMap<String, Vec<String>>,
+    pub assignments: HashMap<String, Vec<String>>,
 }}
 
 // Application Settings
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppSettings {
     pub theme_preference: String,
-    pub department_colors: std::collections::HashMap<String, String>,
+    pub department_colors: HashMap<String, String>,
     pub auto_save_enabled: bool,
+    pub view_scale: Option<f32>, // New field
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         AppSettings {
             theme_preference: "system".to_string(),
-            department_colors: std::collections::HashMap::new(),
+            department_colors: HashMap::new(),
             auto_save_enabled: false,
+            view_scale: Some(1.0), // Default view_scale
         }
     }
 }
