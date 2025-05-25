@@ -26,3 +26,16 @@ build/
 # Other unneeded binaries or temp files
 *.bak
 *.tmp
+
+# Rust build output
+target/
+
+# Rust toolchains
+rustup/
+
+# VSCode settings
+.vscode/
+
+# Backup or swap files
+*.rs.bk
+*.swp
