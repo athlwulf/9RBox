@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::messages::Message;
+use crate::messages::{Message, TabId};
 // Added Rule to the import list, removed redundant Button, Column, Container, Row, Text which are covered by explicit imports later or not used.
 // The explicit individual imports like `Button, Column, Container, Row, Text` are fine,
 // but `rule` (the module) was being imported, not `Rule` (the struct).
@@ -22,17 +22,47 @@ pub fn view_app(app: &App) -> Element<Message> {
         employee_list_content = employee_list_content.push(button);
     }
 
+    // Tab buttons
+    let employees_tab_button = Button::new(Text::new("Employees"))
+        .on_press(Message::TabSelected(TabId::Employees))
+        .width(Length::Fill);
+    let skills_tab_button = Button::new(Text::new("Skills"))
+        .on_press(Message::TabSelected(TabId::Skills))
+        .width(Length::Fill);
+
+    let tab_buttons = row![
+        employees_tab_button,
+        skills_tab_button
+    ]
+    .spacing(5);
+
+    // Conditional content based on active tab
+    let left_panel_content = match app.active_tab {
+        TabId::Employees => {
+            column![
+                Text::new("Employee List").size(20),
+                scrollable(employee_list_content) // Display the list of buttons
+            ]
+            .spacing(10)
+        }
+        TabId::Skills => {
+            column![
+                Text::new("Skills View").size(20),
+                Text::new("Skills View - Coming Soon")
+            ]
+            .spacing(10)
+        }
+    };
+
     // Main content: A row with three columns
     let content = row![
-        // Employee List Section
+        // Left Panel Section (with tabs)
         Container::new(
-            scrollable(
-                column![
-                    Text::new("Employee List").size(20),
-                    employee_list_content // Display the list of buttons
-                ]
-                .spacing(10)
-            )
+            column![
+                tab_buttons,
+                left_panel_content
+            ]
+            .spacing(10)
         )
         .width(Length::FillPortion(1)) // Takes 1/4 of the space
         .height(Length::Fill)
@@ -117,9 +147,9 @@ pub fn view_app(app: &App) -> Element<Message> {
 // New function to render the 9-Box Grid
 fn view_9box_grid(app: &App) -> Element<Message> {
     let box_ids_labels = [
-        [("1A", "High Perf / High Pot"), ("1B", "High Perf / Med Pot"), ("1C", "High Perf / Low Pot")],
-        [("2A", "Med Perf / High Pot"),  ("2B", "Med Perf / Med Pot"),  ("2C", "Med Perf / Low Pot")],
-        [("3A", "Low Perf / High Pot"),  ("3B", "Low Perf / Med Pot"),  ("3C", "Low Perf / Low Pot")],
+        [("1A", "7 - High Performance / Low Potential"), ("1B", "8 - High Performance / Med Potential"), ("1C", "9 - High Performance / High Potential ")],
+        [("2A", "4 - Med Performance / Low Potential"),  ("2B", "5 - Med Performance / Med Potential"),  ("2C", "6 - Med Performance / High Potential")],
+        [("3A", "1 - Low Performance / Low Potential"),  ("3B", "2 - Low Performance / Med Potential"),  ("3C", "3 - Low Performance / High Potential")],
     ];
 
     let mut grid_column = Column::new().spacing(5).align_items(iced::Alignment::Center);

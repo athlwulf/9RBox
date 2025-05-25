@@ -1,4 +1,4 @@
-use crate::messages::Message;
+use crate::messages::{Message, TabId};
 use crate::views::view_app;
 // Corrected to import the function that expects a Reader
 use box_planner_core::csv_processing::import_employees_from_csv; 
@@ -18,6 +18,7 @@ pub struct App {
     pub selected_employee_id: Option<String>,
     pub view_scale: f32,
     pub app_settings: AppSettings, // Added app_settings field
+    pub active_tab: TabId,
 }
 
 impl App {
@@ -98,6 +99,7 @@ impl App {
             selected_employee_id: None,
             view_scale: initial_view_scale, // Use loaded or default scale
             app_settings, // Store loaded/default settings
+            active_tab: TabId::Employees,
         }
     }
 
@@ -198,6 +200,10 @@ impl iced::Application for App {
                     Err(e) => eprintln!("Failed to save settings to {:?}: {}", settings_path, e),
                 }
             }
+            Message::TabSelected(tab_id) => {
+                self.active_tab = tab_id;
+                println!("Tab selected: {:?}", tab_id);
+            }
         }
         Command::none()
     }
@@ -242,6 +248,7 @@ mod tests {
     fn test_initial_state() {
         let app = setup_app();
         assert_eq!(app.selected_employee_id, None, "Selected employee ID should be None initially.");
+        assert_eq!(app.active_tab, TabId::Employees, "Default active tab should be Employees.");
         
         // Check view_scale based on AppSettings default or loaded settings.
         // AppSettings::default() sets view_scale to Some(1.0).
@@ -342,5 +349,21 @@ mod tests {
         // If the target_box_id was part of initial_assignments, its content should be the same.
         // If it wasn't, it should still not be there.
         assert_eq!(app.grid_state.assignments, initial_assignments, "Assignments should not change if no employee is selected.");
+    }
+
+    #[test]
+    fn test_tab_selection() {
+        let mut app = setup_app();
+
+        // Assert initial state (already covered by test_initial_state but good for clarity)
+        assert_eq!(app.active_tab, TabId::Employees, "Initial active tab should be Employees.");
+
+        // Select Skills tab
+        app.update(Message::TabSelected(TabId::Skills));
+        assert_eq!(app.active_tab, TabId::Skills, "Active tab should be Skills after selection.");
+
+        // Select Employees tab again
+        app.update(Message::TabSelected(TabId::Employees));
+        assert_eq!(app.active_tab, TabId::Employees, "Active tab should be back to Employees after selection.");
     }
 }
