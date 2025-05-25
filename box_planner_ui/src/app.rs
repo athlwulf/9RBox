@@ -418,6 +418,50 @@ impl iced::Application for App {
     // fn theme(&self) -> Self::Theme {
     //     Theme::default() // Or your custom theme
     // }
+
+    fn overlay(&self) -> Option<Element<Message>> {
+        if let Some(dragged_id) = &self.drag_source_card_id { // Use drag_source_card_id
+            if let Some(employee_data) = self.employees.iter().find(|e| e.user_id == *dragged_id) {
+                
+                struct GhostStyle;
+                impl iced::widget::container::StyleSheet for GhostStyle {
+                    type Style = iced::Theme;
+                    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+                        iced::widget::container::Appearance {
+                            background: Some(iced::Background::Color(iced::Color::from_rgba(0.85, 0.85, 0.85, 0.75))), // Light gray, semi-transparent
+                            border: iced::Border {
+                                color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.75),
+                                width: 1.0,
+                                radius: iced::border::Radius::from(4.0),
+                            },
+                            shadow: Default::default(),
+                            text_color: None,
+                        }
+                    }
+                }
+
+                let ghost_card_content = crate::widgets::employee_card(
+                    employee_data, 
+                    false, // is_expanded
+                    false, // is_highlighted_for_skill_drop (not a drop target itself)
+                    false, // is_drag_source (the original card is the source)
+                    // No is_ghost parameter needed here as styling is done by the wrapper
+                );
+
+                let ghost_element = iced::widget::Container::new(ghost_card_content)
+                    .width(iced::Length::Fixed(150.0 * self.view_scale)) 
+                    .height(iced::Length::Fixed(100.0 * self.view_scale)) 
+                    .style(iced::theme::Container::Custom(Box::new(GhostStyle)));
+                
+                // Basic positioning: This will likely appear at the top-left of the overlay.
+                // To position at cursor, a different approach is needed, possibly involving
+                // a full-screen transparent container with alignment, or Canvas.
+                // For now, just returning the styled ghost card.
+                return Some(ghost_element.into());
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]
@@ -439,6 +483,13 @@ mod tests {
         // The current App::new() logic falls back to defaults/dummies, which is testable.
         App::new()
     }
+
+    // Note: The test for `dragged_employee_id` was for the old implementation.
+    // The field is now `drag_source_card_id`.
+    // The test `test_card_drag_and_drop_logic` should be updated or replaced
+    // once the full drag-and-drop logic with overlay and mouse release is in place.
+    // For now, I will keep the existing test as it tests the press-and-click-box logic.
+    // A new test for the overlay itself is not straightforward as it's a visual element.
 
     #[test]
     fn test_initial_state() {
