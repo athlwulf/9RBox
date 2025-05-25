@@ -420,7 +420,7 @@ impl iced::Application for App {
     // }
 
     fn overlay(&self) -> Option<Element<Message>> {
-        if let Some(dragged_id) = &self.drag_source_card_id { // Use drag_source_card_id
+        if let Some(dragged_id) = &self.dragged_employee_id { // Use dragged_employee_id
             if let Some(employee_data) = self.employees.iter().find(|e| e.user_id == *dragged_id) {
                 
                 struct GhostStyle;
