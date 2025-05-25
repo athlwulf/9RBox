@@ -1,5 +1,6 @@
 use crate::app::App;
 use crate::messages::{Message, TabId};
+use crate::widgets::employee_card; // New import
 // Added Rule to the import list, removed redundant Button, Column, Container, Row, Text which are covered by explicit imports later or not used.
 // The explicit individual imports like `Button, Column, Container, Row, Text` are fine,
 // but `rule` (the module) was being imported, not `Rule` (the struct).
@@ -46,9 +47,18 @@ pub fn view_app(app: &App) -> Element<Message> {
             .spacing(10)
         }
         TabId::Skills => {
+            // NEW: Skills Palette View
+            let mut skills_list_content = Column::new().spacing(5).padding(5);
+            for skill in &app.available_skills {
+                let skill_button = Button::new(Text::new(skill.name.clone()))
+                    .on_press(Message::SkillDragStarted(skill.id.clone()))
+                    .width(Length::Fill);
+                skills_list_content = skills_list_content.push(skill_button);
+            }
+
             column![
-                Text::new("Skills View").size(20),
-                Text::new("Skills View - Coming Soon")
+                Text::new("Available Skills").size(20),
+                scrollable(skills_list_content) // Make it scrollable if many skills
             ]
             .spacing(10)
         }
@@ -135,12 +145,25 @@ pub fn view_app(app: &App) -> Element<Message> {
     .spacing(10) // Spacing between the main sections and rules
     .align_items(iced::Alignment::Start); // Align items to the top
 
+    let refresh_button = Button::new(Text::new("Refresh Data"))
+        .on_press(Message::RefreshData)
+        .padding(5);
+
+    // New main column including the refresh button and the existing main_layout_row (renamed to 'content_row')
+    let content_with_refresh = column![
+        refresh_button,
+        content // 'content' is the existing main_layout_row
+    ]
+    .spacing(10)
+    .padding(10); // Add some padding around the whole content
+
+
     // Wrap content in a container for the main window
-    container(content)
+    container(content_with_refresh)
         .width(Length::Fill)
         .height(Length::Fill)
         .center_x()
-        .center_y()
+        //.center_y() // Centering Y might not be desired if content is scrollable or long
         .into()
 }
 
@@ -157,38 +180,69 @@ fn view_9box_grid(app: &App) -> Element<Message> {
     for row_of_boxes in box_ids_labels.iter() {
         let mut grid_row_element = Row::new().spacing(5).align_items(iced::Alignment::Start);
         for (box_id, box_label) in row_of_boxes.iter() {
-            let mut employee_names_in_box = Vec::new();
+            let mut box_content_column = Column::new()
+                .push(Text::new(*box_label).size(14))
+                .spacing(3)
+                .align_items(iced::Alignment::Start);
+
+            let mut employee_found_in_box = false;
             if let Some(employee_ids) = app.grid_state.assignments.get(*box_id) {
                 for emp_id in employee_ids {
                     if let Some(employee) = app.employees.iter().find(|e| e.user_id == *emp_id) {
-                        employee_names_in_box.push(format!("- {} {}", employee.first_name, employee.last_name));
+                        let is_expanded = app.expanded_card_id.as_ref() == Some(&employee.user_id);
+                        let is_card_highlighted = app.highlighted_employee_id.as_ref() == Some(&employee.user_id);
+                        // Pass the currently dragged skill ID and highlight status
+                        box_content_column = box_content_column.push(employee_card(
+                            employee, 
+                            is_expanded, 
+                            app.dragged_skill_id.as_ref(),
+                            is_card_highlighted // New argument
+                        ));
+                        employee_found_in_box = true;
                     } else {
-                        employee_names_in_box.push(format!("- (ID: {})", emp_id)); // Fallback
+                        // Fallback for missing employee data
+                        box_content_column = box_content_column.push(Text::new(format!("Employee ID: {} (Not Found)", emp_id)).size(11));
+                        employee_found_in_box = true; // Still counts as content for the box
                     }
                 }
             }
-
-            let mut box_content_column = Column::new()
-                .push(Text::new(*box_label).size(14)) // Use descriptive label
-                .spacing(3)
-                .align_items(iced::Alignment::Start); // Align text to the start
-
-            for name in &employee_names_in_box { // Changed to iterate by reference
-                box_content_column = box_content_column.push(Text::new(name.clone()).size(11)); // Added clone() as name is now &String
-            }
             
-            // Ensure there's always some content for consistent height if no employees
-            if employee_names_in_box.is_empty() { // This check is now valid
+            // Ensure there's always some content for consistent height if no employees and no error messages
+            if !employee_found_in_box {
                  box_content_column = box_content_column.push(Text::new(" ").size(11)); // Add a space to ensure height
             }
+
+            
+            let is_box_highlighted = app.highlighted_box_id.as_ref() == Some(&box_id.to_string());
+            let box_container_style = if is_box_highlighted {
+                struct BoxHighlightStyle;
+                impl iced::widget::container::StyleSheet for BoxHighlightStyle {
+                    type Style = iced::Theme;
+                    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+                        iced::widget::container::Appearance {
+                            background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 1.0, 0.0, 0.3))), // Light green, semi-transparent
+                            border: iced::Border { // Use the Border struct
+                                color: iced::Color::from_rgb(0.0, 0.9, 0.0), // Bright green
+                                width: 2.5, // Thicker border
+                                radius: iced::border::Radius::from(4.0), // Correct path for BorderRadius
+                            },
+                            shadow: Default::default(), // Explicitly set shadow if not customized
+                            text_color: None, // Or Default::default() if you don't want to change text color
+                        }
+                    }
+                }
+                iced::theme::Container::Custom(Box::new(BoxHighlightStyle))
+            } else {
+                iced::theme::Container::Box // Default style
+            };
 
             let grid_box_button = Button::new(
                 Container::new(scrollable(box_content_column)) // Make content scrollable if it overflows
                     .width(Length::Fixed(150.0 * app.view_scale)) // Fixed size for boxes, scaled
-                    .height(Length::Fixed(100.0 * app.view_scale))
+                    .height(Length::Fixed(100.0 * app.view_scale)) // Ensure this height allows for some content before scrolling
                     .padding(5)
                     .center_x() // Center content horizontally
-                    // .style(theme::Container::Bordered) // Example for styling, needs theme setup
+                    .style(box_container_style) // Apply conditional style to the container inside the button
             )
             .on_press(Message::BoxClicked(box_id.to_string()))
             .width(Length::Fixed(150.0 * app.view_scale)) // Scaled button width

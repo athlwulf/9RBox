@@ -2,12 +2,13 @@ use crate::messages::{Message, TabId};
 use crate::views::view_app;
 // Corrected to import the function that expects a Reader
 use box_planner_core::csv_processing::import_employees_from_csv; 
-use box_planner_core::models::{AppSettings, Employee, GridState};
+use box_planner_core::models::{AppSettings, Employee, GridState, Skill, get_predefined_skills}; // Added Skill, get_predefined_skills
 use box_planner_core::persistence::{load_app_settings, save_app_settings};
 use iced::{Command, Element, Theme}; // Removed Executor and Subscription
 use std::fs::File; // Added File
 use std::io::BufReader; // Added BufReader
 use std::path::Path;
+use std::time::Duration; // New import
 
 const SETTINGS_FILE_PATH: &str = "box_planner_ui/app_settings.json";
 const SAMPLE_EMPLOYEES_CSV_PATH: &str = "box_planner_ui/sample_employees.csv";
@@ -18,6 +19,12 @@ pub struct App {
     pub selected_employee_id: Option<String>,
     pub view_scale: f32,
     pub app_settings: AppSettings, // Added app_settings field
+    pub expanded_card_id: Option<String>, // New field
+    pub dragged_employee_id: Option<String>, // New field
+    pub available_skills: Vec<Skill>, // New field
+    pub dragged_skill_id: Option<String>, // New field
+    pub highlighted_box_id: Option<String>,     // New field
+    pub highlighted_employee_id: Option<String>, // New field
     pub active_tab: TabId,
 }
 
@@ -99,12 +106,19 @@ impl App {
             selected_employee_id: None,
             view_scale: initial_view_scale, // Use loaded or default scale
             app_settings, // Store loaded/default settings
+            expanded_card_id: None, // New
+            dragged_employee_id: None, // New
+            available_skills: get_predefined_skills(), // Initialize the new field
+            dragged_skill_id: None, // New
+            highlighted_box_id: None,     // New
+            highlighted_employee_id: None, // New
             active_tab: TabId::Employees,
         }
     }
 
     // Fallback function to load dummy employees
     fn load_dummy_employees() -> Vec<Employee> {
+        let all_skills = get_predefined_skills(); // Get all skills
         vec![
             Employee {
                 user_id: "1".to_string(),
@@ -116,7 +130,12 @@ impl App {
                 pr_2021: None, pr_2022: None, pr_2023: None, pr_2024: Some(4.5),
                 user_9box_2024: Some("1A".to_string()), user_9box_2025: None,
                 notes: None, current_label: None, email: None, manager_id: None,
-                department: None, location: None, hire_date: None,
+                department: None, location: None, hire_date: None, 
+                skills: if all_skills.len() >= 2 { // Check if enough skills exist
+                            vec![all_skills[0].clone(), all_skills[1].clone()] // Example: assign Rust and GUI Design
+                       } else {
+                            vec![]
+                       },
             },
             Employee {
                 user_id: "2".to_string(),
@@ -128,7 +147,12 @@ impl App {
                 pr_2021: None, pr_2022: None, pr_2023: None, pr_2024: Some(4.2),
                 user_9box_2024: Some("2B".to_string()), user_9box_2025: None,
                 notes: None, current_label: None, email: None, manager_id: None,
-                department: None, location: None, hire_date: None,
+                department: None, location: None, hire_date: None, 
+                skills: if all_skills.len() >= 3 {
+                            vec![all_skills[2].clone()] // Example: assign Project Management
+                        } else {
+                            vec![]
+                        },
             },
         ]
     }
@@ -157,36 +181,42 @@ impl iced::Application for App {
                 self.selected_employee_id = Some(id);
             }
             Message::BoxClicked(box_id) => {
-                if let Some(employee_id) = self.selected_employee_id.clone() {
-                    // Remove employee from any previous box
-                    for (_b_id, emp_ids) in self.grid_state.assignments.iter_mut() {
-                        if let Some(pos) = emp_ids.iter().position(|id| *id == employee_id) {
-                            emp_ids.remove(pos);
+                if let Some(dragged_emp_id) = self.dragged_employee_id.take() {
+                    // This is a drop from a card drag
+                    for (_b_id, emp_ids_in_box) in self.grid_state.assignments.iter_mut() {
+                        if let Some(pos) = emp_ids_in_box.iter().position(|id| *id == dragged_emp_id) {
+                            emp_ids_in_box.remove(pos);
                         }
                     }
-                    // Remove boxes with empty assignments
-                    self.grid_state.assignments.retain(|_, emp_ids| !emp_ids.is_empty());
-
-                    // Add employee to the new box
+                    self.grid_state.assignments.retain(|_b_id, emp_ids_in_box| !emp_ids_in_box.is_empty());
                     self.grid_state.assignments
                         .entry(box_id.clone())
                         .or_default()
-                        .push(employee_id.clone());
+                        .push(dragged_emp_id.clone());
                     
-                    println!("Assigned employee {} to box {}", employee_id, box_id);
+                    println!("Dropped (via BoxClicked) employee {} to box {}", dragged_emp_id, box_id);
+                    self.highlighted_box_id = Some(box_id.clone());
+                    return Command::perform(
+                        async { tokio::time::sleep(Duration::from_millis(500)).await },
+                        move |_| Message::ClearBoxHighlight(box_id)
+                    );
 
-                    // Attempt to persist grid_state
-                    // let persistence_path = "box_planner_ui/grid_data.json"; // Example path
-                    // match box_planner_core::persistence::save_grid_state(&self.grid_state, persistence_path) {
-                    //     Ok(_) => println!("Grid state saved to {}", persistence_path),
-                    //     Err(e) => eprintln!("Failed to save grid state: {}. Proceeding with in-memory state.", e),
-                    // }
-                    println!("Persistence: 'save_grid_state' function not found in core/src/persistence.rs. Skipping file save. State is in-memory only.");
-
-
-                    self.selected_employee_id = None; // Clear selection
+                } else if let Some(selected_emp_id) = self.selected_employee_id.clone() {
+                    // Original BoxClicked logic: assign from main employee list
+                    for (_b_id, emp_ids_in_box) in self.grid_state.assignments.iter_mut() {
+                        if let Some(pos) = emp_ids_in_box.iter().position(|id| *id == selected_emp_id) {
+                            emp_ids_in_box.remove(pos);
+                        }
+                    }
+                    self.grid_state.assignments.retain(|_b_id, emp_ids_in_box| !emp_ids_in_box.is_empty());
+                    self.grid_state.assignments
+                        .entry(box_id.clone())
+                        .or_default()
+                        .push(selected_emp_id.clone());
+                    println!("Assigned (via BoxClicked) employee {} to box {}", selected_emp_id, box_id);
+                    self.selected_employee_id = None; // Clear selection from main list
                 } else {
-                    println!("Box {} clicked, but no employee selected.", box_id);
+                    println!("Box {} clicked, but no employee selected for assignment and no drag operation in progress.", box_id);
                 }
             }
             Message::ScaleChanged(new_scale) => {
@@ -203,6 +233,172 @@ impl iced::Application for App {
             Message::TabSelected(tab_id) => {
                 self.active_tab = tab_id;
                 println!("Tab selected: {:?}", tab_id);
+            }
+            Message::CardClicked(employee_id) => {
+                if self.expanded_card_id.as_ref() == Some(&employee_id) {
+                    self.expanded_card_id = None; // Toggle off if already expanded
+                } else {
+                    self.expanded_card_id = Some(employee_id);
+                }
+            }
+            Message::NotesChanged(employee_id, new_notes) => {
+                if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
+                    employee.notes = Some(new_notes);
+                }
+            }
+            Message::RemoveSkillTag(employee_id, skill_id_to_remove) => {
+                if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
+                    employee.skills.retain(|skill| skill.id != skill_id_to_remove);
+                }
+            }
+            Message::CardDragStarted(employee_id) => {
+                self.dragged_employee_id = Some(employee_id.clone());
+                // self.selected_employee_id = None; // Optional: clear main list selection
+                println!("Card drag started: {}", employee_id);
+            }
+            Message::CardDroppedOnBox(dragged_employee_id, target_box_id) => {
+                println!("Card dropped: {} on box {}", dragged_employee_id, target_box_id);
+                // Ensure an employee was actually being dragged and it's the same one
+                if self.dragged_employee_id.as_ref() == Some(&dragged_employee_id) {
+                    // 1. Remove employee from any previous box in grid_state.assignments
+                    for (_b_id, emp_ids_in_box) in self.grid_state.assignments.iter_mut() {
+                        if let Some(pos) = emp_ids_in_box.iter().position(|id| *id == dragged_employee_id) {
+                            emp_ids_in_box.remove(pos);
+                        }
+                    }
+                    // Remove boxes with empty assignments after removal
+                    self.grid_state.assignments.retain(|_b_id, emp_ids_in_box| !emp_ids_in_box.is_empty());
+
+                    // 2. Add employee to the new target_box_id
+                    self.grid_state.assignments
+                        .entry(target_box_id.clone())
+                        .or_default()
+                        .push(dragged_employee_id.clone());
+                    
+                    println!("Assigned employee {} to box {}", dragged_employee_id, target_box_id);
+                    
+                    // 3. Clear the dragged_employee_id state
+                    self.dragged_employee_id = None; // Cleared after successful drop
+                    
+                    // Set highlight and schedule clearing
+                    self.highlighted_box_id = Some(target_box_id.clone());
+                    return Command::perform(
+                        async { tokio::time::sleep(Duration::from_millis(500)).await },
+                        move |_| Message::ClearBoxHighlight(target_box_id)
+                    );
+                } else {
+                    eprintln!("CardDroppedOnBox called but no/mismatched employee was being dragged. Current dragged_employee_id: {:?}", self.dragged_employee_id);
+                     // Important: If there was a mismatch or no drag, but CardDroppedOnBox was called,
+                    // we should probably clear dragged_employee_id to prevent unintended drops later.
+                    self.dragged_employee_id = None; // Ensure it's cleared on mismatch too
+                }
+                // If logic falls through (e.g., mismatch), return Command::none()
+                return Command::none(); 
+            }
+            Message::SkillDragStarted(skill_id) => {
+                self.dragged_skill_id = Some(skill_id.clone());
+                // Potentially clear other drag states if necessary
+                // self.dragged_employee_id = None; 
+                println!("Skill drag started: {}", skill_id);
+            }
+            Message::SkillDroppedOnCard(skill_id, employee_id) => {
+                if self.dragged_skill_id.as_ref() == Some(&skill_id) {
+                    if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
+                        // Check if employee already has this skill (by id)
+                        if !employee.skills.iter().any(|s| s.id == skill_id) {
+                            // Find the skill from available_skills to get its full details (name, id)
+                            if let Some(skill_to_add) = self.available_skills.iter().find(|s| s.id == skill_id).cloned() {
+                                employee.skills.push(skill_to_add.clone()); // Push cloned skill
+                                println!("Added skill {} to employee {}", skill_id, employee_id);
+                                
+                                // Set highlight and schedule clearing
+                                self.highlighted_employee_id = Some(employee_id.clone());
+                                self.dragged_skill_id = None; // Clear after successful processing
+                                return Command::perform(
+                                    async { tokio::time::sleep(Duration::from_millis(500)).await },
+                                    move |_| Message::ClearCardHighlight(employee_id)
+                                );
+                            } else {
+                                eprintln!("Skill {} not found in available_skills.", skill_id);
+                            }
+                        } else {
+                            println!("Employee {} already has skill {}.", employee_id, skill_id);
+                        }
+                    } else {
+                        eprintln!("Employee {} not found for skill drop.", employee_id);
+                    }
+                    self.dragged_skill_id = None; // Ensure dragged skill state is cleared
+                } else {
+                    eprintln!("SkillDroppedOnCard called but no/mismatched skill was being dragged.");
+                    self.dragged_skill_id = None; // Also clear if there's a mismatch
+                }
+            }
+            Message::ClearBoxHighlight(box_id_to_clear) => {
+                if self.highlighted_box_id.as_ref() == Some(&box_id_to_clear) {
+                    self.highlighted_box_id = None;
+                }
+            }
+            Message::ClearCardHighlight(employee_id_to_clear) => {
+                if self.highlighted_employee_id.as_ref() == Some(&employee_id_to_clear) {
+                    self.highlighted_employee_id = None;
+                }
+            }
+            Message::RefreshData => {
+                println!("Refreshing data...");
+
+                // Reload employees (similar to App::new)
+                let employees_load_result = File::open(SAMPLE_EMPLOYEES_CSV_PATH)
+                    .map_err(|e| format!("Failed to open CSV file '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e))
+                    .and_then(|file| {
+                        let reader = BufReader::new(file);
+                        import_employees_from_csv(reader)
+                            .map_err(|e| format!("Failed to parse CSV from '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e.to_string()))
+                    });
+
+                self.employees = match employees_load_result {
+                    Ok(loaded_employees) => {
+                        if loaded_employees.is_empty() {
+                            println!("No employees loaded from CSV during refresh, using dummy data.");
+                            Self::load_dummy_employees()
+                        } else {
+                            println!("Successfully reloaded {} employees from CSV.", loaded_employees.len());
+                            loaded_employees
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error reloading employees from CSV: {}. Using dummy data instead.", e);
+                        Self::load_dummy_employees()
+                    }
+                };
+                
+                // Reset grid_state (similar to App::new, including any default assignments)
+                let mut new_grid_state = GridState::default();
+                if !self.employees.is_empty() { // Re-apply initial assignments based on newly loaded employees
+                    new_grid_state.assignments.insert("1A".to_string(), vec![self.employees[0].user_id.clone()]);
+                    if self.employees.len() > 1 {
+                         new_grid_state.assignments.insert("2B".to_string(), vec![self.employees[1].user_id.clone()]);
+                    }
+                    if self.employees.len() > 2 {
+                         // Assuming the same logic as App::new: add second employee to 1A if available
+                         if let Some(existing_1a) = new_grid_state.assignments.get_mut("1A") {
+                            existing_1a.push(self.employees[2].user_id.clone());
+                         } else { // Should not happen if first employee was added
+                            new_grid_state.assignments.insert("1A".to_string(), vec![self.employees[2].user_id.clone()]);
+                         }
+                    }
+                    if self.employees.len() > 3 {
+                        new_grid_state.assignments.insert("3C".to_string(), vec![self.employees[3].user_id.clone()]);
+                    }
+                }
+                self.grid_state = new_grid_state;
+
+                // Clear UI state variables
+                self.selected_employee_id = None;
+                self.expanded_card_id = None;
+                self.dragged_employee_id = None;
+                self.dragged_skill_id = None;
+                self.highlighted_box_id = None;
+                self.highlighted_employee_id = None;
             }
         }
         Command::none()
@@ -365,5 +561,146 @@ mod tests {
         // Select Employees tab again
         app.update(Message::TabSelected(TabId::Employees));
         assert_eq!(app.active_tab, TabId::Employees, "Active tab should be back to Employees after selection.");
+    }
+
+    #[test]
+    fn test_add_and_prevent_duplicate_skill() {
+        let mut app = setup_app(); 
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty.");
+        assert!(!app.available_skills.is_empty(), "Prerequisite: Available skills list is empty.");
+
+        let employee_id = app.employees[0].user_id.clone();
+        let skill_to_add = app.available_skills[0].clone();
+
+        // Simulate starting a skill drag
+        app.update(Message::SkillDragStarted(skill_to_add.id.clone()));
+        assert_eq!(app.dragged_skill_id, Some(skill_to_add.id.clone()), "dragged_skill_id should be set after SkillDragStarted.");
+
+        // Drop the skill on the card
+        app.update(Message::SkillDroppedOnCard(skill_to_add.id.clone(), employee_id.clone()));
+        
+        let employee = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert!(employee.skills.iter().any(|s| s.id == skill_to_add.id), "Employee should have the skill after first drop.");
+        assert_eq!(app.dragged_skill_id, None, "dragged_skill_id should be cleared after drop.");
+
+        let skill_count_before_duplicate_add = employee.skills.len();
+
+        // Attempt to add the same skill again
+        app.update(Message::SkillDragStarted(skill_to_add.id.clone())); // Start drag again
+        app.update(Message::SkillDroppedOnCard(skill_to_add.id.clone(), employee_id.clone()));
+        
+        let employee_after_duplicate_add = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert_eq!(employee_after_duplicate_add.skills.len(), skill_count_before_duplicate_add, "Skill count should not increase on duplicate add.");
+        assert_eq!(app.dragged_skill_id, None, "dragged_skill_id should be cleared even if skill was not added due to duplication.");
+    }
+
+    #[test]
+    fn test_skill_removal() {
+        let mut app = setup_app();
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty.");
+        assert!(!app.available_skills.is_empty(), "Prerequisite: Available skills list is empty.");
+
+        let employee_id = app.employees[0].user_id.clone();
+        let skill_to_manage = app.available_skills[0].clone();
+
+        // First, add the skill to the employee
+        app.update(Message::SkillDragStarted(skill_to_manage.id.clone()));
+        app.update(Message::SkillDroppedOnCard(skill_to_manage.id.clone(), employee_id.clone()));
+        
+        let employee_with_skill = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert!(employee_with_skill.skills.iter().any(|s| s.id == skill_to_manage.id), "Skill should be present before removal.");
+
+        // Now, remove the skill
+        app.update(Message::RemoveSkillTag(employee_id.clone(), skill_to_manage.id.clone()));
+        
+        let employee_after_removal = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert!(!employee_after_removal.skills.iter().any(|s| s.id == skill_to_manage.id), "Skill should be removed.");
+    }
+
+    #[test]
+    fn test_card_drag_and_drop_logic() {
+        let mut app = setup_app();
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty.");
+        
+        let employee_to_drag_id = app.employees[0].user_id.clone();
+        let initial_box_id = "TestBoxInit".to_string();
+        let target_box_id = "TestBoxTarget".to_string();
+
+        // Manually assign employee to an initial box for testing this specific logic
+        app.grid_state.assignments.entry(initial_box_id.clone()).or_default().push(employee_to_drag_id.clone());
+        
+        // Simulate starting card drag
+        app.update(Message::CardDragStarted(employee_to_drag_id.clone()));
+        assert_eq!(app.dragged_employee_id, Some(employee_to_drag_id.clone()), "dragged_employee_id should be set after CardDragStarted.");
+
+        // Simulate dropping on a new box (using BoxClicked, which should forward if drag is active)
+        app.update(Message::BoxClicked(target_box_id.clone()));
+        
+        // Note: BoxClicked forwards to CardDroppedOnBox which handles the logic.
+        // Need to check results after that internal forwarding.
+        // The direct CardDroppedOnBox handler should have done the work.
+
+        assert!(app.grid_state.assignments.get(&initial_box_id).map_or(true, |ids| !ids.contains(&employee_to_drag_id)), "Employee should be removed from the initial box.");
+        assert!(app.grid_state.assignments.get(&target_box_id).map_or(false, |ids| ids.contains(&employee_to_drag_id)), "Employee should be added to the target box.");
+        assert_eq!(app.dragged_employee_id, None, "dragged_employee_id should be cleared after drop.");
+    }
+    
+    #[test]
+    fn test_refresh_data_core_state_reset() {
+        let mut app = setup_app();
+        assert!(app.employees.len() >= 1, "Need at least one employee for this test");
+
+        // 1. Modify some state
+        let original_view_scale = app.view_scale; // Store for later comparison
+        let employee_id_to_select = app.employees[0].user_id.clone();
+        
+        // Assign an employee to a non-default box
+        let test_box_id = "TestBoxForRefresh".to_string();
+        app.update(Message::EmployeeSelected(employee_id_to_select.clone()));
+        app.update(Message::BoxClicked(test_box_id.clone()));
+        assert!(app.grid_state.assignments.get(&test_box_id).is_some(), "Employee should be in test box before refresh.");
+
+        // Set other UI states
+        app.selected_employee_id = Some("some_selected_id".to_string());
+        app.expanded_card_id = Some("some_expanded_id".to_string());
+        app.dragged_employee_id = Some("some_dragged_emp_id".to_string());
+        app.dragged_skill_id = Some("some_dragged_skill_id".to_string());
+        app.highlighted_box_id = Some("some_highlighted_box".to_string());
+        app.highlighted_employee_id = Some("some_highlighted_emp".to_string());
+
+        // 2. Action: Send Message::RefreshData
+        app.update(Message::RefreshData);
+
+        // 3. Assertions
+        // Check if grid_state.assignments are reset to initial state.
+        // This depends on the default assignments in App::new() for the dummy data.
+        // For example, dummy employee "1" is usually assigned to "1A".
+        let first_dummy_employee_id = "1".to_string(); // Assuming this is a known ID from load_dummy_employees
+        let is_first_dummy_in_1a_after_refresh = app.grid_state.assignments
+            .get("1A")
+            .map_or(false, |ids| ids.contains(&first_dummy_employee_id));
+        
+        // If your dummy data load doesn't always put employee "1" in "1A", adjust this assertion.
+        // Or, check that the test_box_id assignment is gone.
+        assert!(!app.grid_state.assignments.get(&test_box_id).map_or(false, |ids| ids.contains(&employee_id_to_select)), "Custom assignment should be cleared after refresh.");
+        if app.employees.iter().any(|e| e.user_id == first_dummy_employee_id) { // Only assert if dummy employee "1" exists
+             assert!(is_first_dummy_in_1a_after_refresh, "Employee '1' should be in box '1A' after refresh if dummy data is loaded.");
+        }
+
+
+        // Assert UI state variables are cleared
+        assert_eq!(app.selected_employee_id, None, "selected_employee_id should be None.");
+        assert_eq!(app.expanded_card_id, None, "expanded_card_id should be None.");
+        assert_eq!(app.dragged_employee_id, None, "dragged_employee_id should be None.");
+        assert_eq!(app.dragged_skill_id, None, "dragged_skill_id should be None.");
+        assert_eq!(app.highlighted_box_id, None, "highlighted_box_id should be None.");
+        assert_eq!(app.highlighted_employee_id, None, "highlighted_employee_id should be None.");
+
+        // Assert that view_scale (part of AppSettings) is NOT reset
+        assert_eq!(app.view_scale, original_view_scale, "View scale should not be reset by RefreshData.");
+        assert_eq!(app.app_settings.view_scale, Some(original_view_scale), "View scale in AppSettings should not be reset.");
+
+        // Assert that available_skills is NOT reset (it's loaded once in new())
+        assert!(!app.available_skills.is_empty(), "Available skills should still be present.");
     }
 }

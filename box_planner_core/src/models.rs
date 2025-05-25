@@ -42,6 +42,7 @@ pub struct Employee {
     pub location: Option<String>,
     #[serde(rename = "Hire Date")]
     pub hire_date: Option<String>, // Consider using a date/time type if appropriate
+    pub skills: Vec<Skill>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -81,4 +82,16 @@ impl Default for AppSettings {
             view_scale: Some(1.0), // Default view_scale
         }
     }
+}
+
+// New function to provide a list of predefined skills:
+pub fn get_predefined_skills() -> Vec<Skill> {
+    vec![
+        Skill { id: "sk_rust".to_string(), name: "Rust".to_string() },
+        Skill { id: "sk_gui".to_string(), name: "GUI Design".to_string() },
+        Skill { id: "sk_project_mgmt".to_string(), name: "Project Management".to_string() },
+        Skill { id: "sk_public_speaking".to_string(), name: "Public Speaking".to_string() },
+        Skill { id: "sk_data_analysis".to_string(), name: "Data Analysis".to_string() },
+        // Add more diverse skills as needed
+    ]
 }
