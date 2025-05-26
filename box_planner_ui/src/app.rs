@@ -4,7 +4,7 @@ use crate::views::view_app;
 use box_planner_core::csv_processing::import_employees_from_csv; 
 use box_planner_core::models::{AppSettings, Employee, GridState, Skill, get_predefined_skills}; // Added Skill, get_predefined_skills
 use box_planner_core::persistence::{load_app_settings, save_app_settings};
-use iced::{Command, Element, Theme, mouse, keyboard}; // Added mouse, keyboard
+use iced::{Command, Element, Theme, Subscription, event, mouse, keyboard}; // Added Subscription and event
 use std::fs::File; // Added File
 use std::io::BufReader; // Added BufReader
 use std::path::Path;
@@ -189,6 +189,7 @@ impl iced::Application for App {
             Message::EmployeeSelected(id) => {
                 println!("Employee selected: {}", id);
                 self.selected_employee_id = Some(id);
+                Command::none()
             }
             Message::BoxClicked(box_id) => {
                 if let Some(dragged_emp_id) = self.dragged_employee_id.take() {
@@ -228,6 +229,7 @@ impl iced::Application for App {
                 } else {
                     println!("Box {} clicked, but no employee selected for assignment and no drag operation in progress.", box_id);
                 }
+                Command::none()
             }
             Message::ScaleChanged(new_scale) => {
                 println!("Scale changed: {}", new_scale);
@@ -239,10 +241,12 @@ impl iced::Application for App {
                     Ok(_) => println!("Successfully saved settings to {:?}", settings_path),
                     Err(e) => eprintln!("Failed to save settings to {:?}: {}", settings_path, e),
                 }
+                Command::none()
             }
             Message::TabSelected(tab_id) => {
                 self.active_tab = tab_id;
                 println!("Tab selected: {:?}", tab_id);
+                Command::none()
             }
             Message::CardClicked(employee_id) => {
                 if self.expanded_card_id.as_ref() == Some(&employee_id) {
@@ -250,21 +254,25 @@ impl iced::Application for App {
                 } else {
                     self.expanded_card_id = Some(employee_id);
                 }
+                Command::none()
             }
             Message::NotesChanged(employee_id, new_notes) => {
                 if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
                     employee.notes = Some(new_notes);
                 }
+                Command::none()
             }
             Message::RemoveSkillTag(employee_id, skill_id_to_remove) => {
                 if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
                     employee.skills.retain(|skill| skill.id != skill_id_to_remove);
                 }
+                Command::none()
             }
             Message::CardDragStarted(employee_id) => {
                 self.dragged_employee_id = Some(employee_id.clone());
                 // self.selected_employee_id = None; // Optional: clear main list selection
                 println!("Card drag started: {}", employee_id);
+                Command::none()
             }
             Message::CardDroppedOnBox(dragged_employee_id, target_box_id, drop_coordinates) => {
                 println!("Card dropped: {} on box {} at coordinates: {:?}", dragged_employee_id, target_box_id, drop_coordinates);
@@ -314,6 +322,7 @@ impl iced::Application for App {
                 // Potentially clear other drag states if necessary
                 // self.dragged_employee_id = None; 
                 println!("Skill drag started: {}", skill_id);
+                Command::none()
             }
             Message::SkillDroppedOnCard(skill_id, employee_id) => {
                 if self.dragged_skill_id.as_ref() == Some(&skill_id) {
@@ -346,57 +355,105 @@ impl iced::Application for App {
                     eprintln!("SkillDroppedOnCard called but no/mismatched skill was being dragged.");
                     self.dragged_skill_id = None; // Also clear if there's a mismatch
                 }
+                Command::none()
             }
             Message::ClearBoxHighlight(box_id_to_clear) => {
                 if self.highlighted_box_id.as_ref() == Some(&box_id_to_clear) {
                     self.highlighted_box_id = None;
                 }
+                Command::none()
             }
             Message::ClearCardHighlight(employee_id_to_clear) => {
                 if self.highlighted_employee_id.as_ref() == Some(&employee_id_to_clear) {
                     self.highlighted_employee_id = None;
                 }
+                Command::none()
             }
             Message::CardPressed(employee_id) => {
                 self.dragged_employee_id = Some(employee_id);
                 // self.dragged_item_current_pos = None; // Or some initial mouse position if available from CardPressed
                 println!("Card pressed, drag started for: {:?}", self.dragged_employee_id); // For debugging
+                Command::none()
             }
             Message::HandleGlobalEvent(event) => {
-                if let Some(dragged_emp_id) = self.dragged_employee_id.clone() {
+                println!("HandleGlobalEvent received: {:?}", event); // Existing debug print
+                if self.dragged_employee_id.is_none() {
+                    // --- Part 1: No drag in progress - Check for drag initiation ---
+                    if let iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event {
+                        if let Some(press_pos) = self.dragged_item_current_pos { // Use last known cursor pos
+                            let (mouse_x, mouse_y) = press_pos;
+
+                            let scaled_box_width = BOX_WIDTH_UNSCALED * self.view_scale;
+                            let scaled_box_height = BOX_HEIGHT_UNSCALED * self.view_scale;
+                            let box_ids_grid = [
+                                ["1A", "1B", "1C"],
+                                ["2A", "2B", "2C"],
+                                ["3A", "3B", "3C"],
+                            ];
+                            let mut clicked_employee_in_box: Option<String> = None;
+
+                            'outer_hit_test: for (row_idx, row_arr) in box_ids_grid.iter().enumerate() {
+                                for (col_idx, box_id_str) in row_arr.iter().enumerate() {
+                                    let box_x = GRID_AREA_TOP_LEFT_X + (col_idx as f32 * (scaled_box_width + BOX_SPACING));
+                                    let box_y = GRID_AREA_TOP_LEFT_Y + (row_idx as f32 * (scaled_box_height + BOX_SPACING));
+
+                                    if mouse_x >= box_x && mouse_x <= box_x + scaled_box_width &&
+                                       mouse_y >= box_y && mouse_y <= box_y + scaled_box_height {
+                                        if let Some(ids_in_box) = self.grid_state.assignments.get(*box_id_str) {
+                                            if !ids_in_box.is_empty() {
+                                                clicked_employee_in_box = Some(ids_in_box[0].clone());
+                                                break 'outer_hit_test;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if let Some(emp_id_to_drag) = clicked_employee_in_box {
+                                self.dragged_employee_id = Some(emp_id_to_drag.clone());
+                                // self.dragged_item_current_pos is already set from the last CursorMoved
+                                println!("Drag initiated by global ButtonPressed for: {}", emp_id_to_drag);
+                            }
+                        } else {
+                            println!("ButtonPressed detected, but no prior CursorMoved event to get position. Drag not initiated.");
+                        }
+                    }
+                    // Always listen for CursorMoved to update position, even if not dragging
+                    else if let iced::Event::Mouse(mouse::Event::CursorMoved { position }) = event {
+                         println!("CursorMoved in HandleGlobalEvent (no drag): ({}, {})", position.x, position.y);
+                         self.dragged_item_current_pos = Some((position.x, position.y));
+                    }
+                } else {
+                    // --- Part 2: Drag is already in progress - Handle move, drop, cancel ---
+                    let dragged_emp_id = self.dragged_employee_id.as_ref().unwrap().clone(); // We know it's Some here.
                     match event {
                         iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                            println!("CursorMoved in HandleGlobalEvent (dragging): ({}, {})", position.x, position.y);
                             self.dragged_item_current_pos = Some((position.x, position.y));
-                            // println!("Mouse moved to: ({}, {})", position.x, position.y); // Debugging
                         }
                         iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                            println!("Mouse button released event for {}", dragged_emp_id); // Keep dragged_emp_id in scope
-                            
+                            println!("Mouse button released event for {}", dragged_emp_id);
                             if let Some((drop_x, drop_y)) = self.dragged_item_current_pos {
                                 let scaled_box_width = BOX_WIDTH_UNSCALED * self.view_scale;
                                 let scaled_box_height = BOX_HEIGHT_UNSCALED * self.view_scale;
-
                                 let box_ids_grid = [
                                     ["1A", "1B", "1C"],
                                     ["2A", "2B", "2C"],
                                     ["3A", "3B", "3C"],
                                 ];
-
                                 let mut found_target_box_id: Option<String> = None;
-                                'outer: for (row_idx, row_arr) in box_ids_grid.iter().enumerate() {
+                                'outer_drop_test: for (row_idx, row_arr) in box_ids_grid.iter().enumerate() {
                                     for (col_idx, box_id_str) in row_arr.iter().enumerate() {
                                         let box_x = GRID_AREA_TOP_LEFT_X + (col_idx as f32 * (scaled_box_width + BOX_SPACING));
                                         let box_y = GRID_AREA_TOP_LEFT_Y + (row_idx as f32 * (scaled_box_height + BOX_SPACING));
-
                                         if drop_x >= box_x && drop_x <= box_x + scaled_box_width &&
                                            drop_y >= box_y && drop_y <= box_y + scaled_box_height {
                                             found_target_box_id = Some(box_id_str.to_string());
-                                            break 'outer; 
+                                            break 'outer_drop_test;
                                         }
                                     }
                                 }
-                                self.dragged_item_current_pos = None; // Clear pos after using it
-
+                                self.dragged_item_current_pos = None;
                                 if let Some(final_target_box_id) = found_target_box_id {
                                     println!("Dropped on box: {}", final_target_box_id);
                                     return self.update(Message::CardDroppedOnBox(dragged_emp_id, final_target_box_id, Some((drop_x, drop_y))));
@@ -405,9 +462,8 @@ impl iced::Application for App {
                                     return self.update(Message::DragCancelled);
                                 }
                             } else {
-                                // Should not happen if CursorMoved updates pos, but handle defensively
                                 println!("Drop detected but no coordinates available, cancelling drag.");
-                                self.dragged_item_current_pos = None; // Ensure it's cleared
+                                self.dragged_item_current_pos = None;
                                 return self.update(Message::DragCancelled);
                             }
                         }
@@ -417,14 +473,16 @@ impl iced::Application for App {
                                 return self.update(Message::DragCancelled);
                             }
                         }
-                        _ => {} 
+                        _ => {} // Ignore other events while dragging
                     }
                 }
+                Command::none() // Default command if no specific action caused a return
             }
             Message::DragCancelled => {
                 self.dragged_employee_id = None;
                 self.dragged_item_current_pos = None;
                 println!("Drag cancelled"); // For debugging
+                Command::none()
             }
             Message::RefreshData => {
                 println!("Refreshing data...");
@@ -482,8 +540,16 @@ impl iced::Application for App {
                 self.dragged_skill_id = None;
                 self.highlighted_box_id = None;
                 self.highlighted_employee_id = None;
+                Command::none()
             }
         }
+        // This final Command::none() is now correctly placed after the entire match,
+        // ensuring the update function always returns a Command.
+        // However, individual arms that don't explicitly return a Command
+        // should also end with Command::none() as an expression.
+        // The main change is handled by the individual arms.
+        // The overall Command::none() at the end of the function acts as a fallback
+        // if a new message variant is added and its arm doesn't return a Command.
         Command::none()
     }
 
@@ -492,16 +558,16 @@ impl iced::Application for App {
         view_app(self)
     }
 
-    // subscription method can be added later if needed for background tasks
-    // fn subscription(&self) -> Subscription<Message> {
-    //     Subscription::none()
-    // }
-
+    fn subscription(&self) -> iced::Subscription<Message> {
+        // Always subscribe to global events to catch initial ButtonPressed for drag initiation,
+        // as well as ongoing drag events (CursorMoved, ButtonReleased, Escape key).
+        iced:: {Command, Element, Theme, Subscription, event, mouse, keyboards; }
+    }
     // theme method can be added if custom theming is desired
     // fn theme(&self) -> Self::Theme {
     //     Theme::default() // Or your custom theme
     // }
-
+}
 //    fn overlay(&self) -> Option<Element<Message>> {
 //        if let Some(dragged_id) = &self.dragged_employee_id { // Use dragged_employee_id
 //            if let Some(employee_data) = self.employees.iter().find(|e| e.user_id == *dragged_id) {
@@ -545,7 +611,7 @@ impl iced::Application for App {
 //        }
 //        None
 //    }
-}
+
 
 #[cfg(test)]
 mod tests {

@@ -59,23 +59,26 @@ pub fn employee_card<'a>(
         );
     }
     
-    // The entire card_details column is now wrapped in a Button specifically for initiating drag
-    // Determine the message for the main card button press
-    let card_press_message = if let Some(d_skill_id) = dragged_skill_id {
-        // If a skill is being dragged, this card becomes a drop target for that skill
-        Message::SkillDroppedOnCard(d_skill_id.clone(), employee.user_id.clone())
-    } else {
-        // Otherwise, pressing the card initiates dragging this card
-        Message::CardDragStarted(employee.user_id.clone())
-    };
-    
-    let main_action_button = Button::new(card_details) // card_details now includes the notes toggle button and possibly TextInput
-        .on_press(card_press_message) // Conditional message
-        .padding(10)
-        .width(Length::Fill);
-        // .style(theme::Button::custom(MyCardStyle)) // To make it look like a card, not a standard button
+    // card_details is built up here...
 
-    Container::new(main_action_button)
+    let interactive_card_area: Element<'a, Message> = if let Some(d_skill_id) = dragged_skill_id {
+        // If a skill is being dragged, this card becomes a drop target (Button)
+        Button::new(card_details) // card_details is the content of the button
+            .on_press(Message::SkillDroppedOnCard(d_skill_id.clone(), employee.user_id.clone()))
+            .padding(10)
+            .width(Length::Fill)
+            .into()
+    } else {
+        // Otherwise, it's just a passive container displaying card_details
+        // Drag initiation for this card will be handled by global events, not an on_press here.
+        Container::new(card_details) // card_details is the content of the container
+            .padding(10) // Match button padding for consistent look
+            .width(Length::Fill)
+            .into()
+    };
+
+    // The rest of the styling container:
+    Container::new(interactive_card_area)
         .width(Length::Fill)
         .style(if is_highlighted {
             struct CardHighlightStyle;
