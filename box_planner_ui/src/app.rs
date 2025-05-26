@@ -4,7 +4,7 @@ use crate::views::view_app;
 use box_planner_core::csv_processing::import_employees_from_csv; 
 use box_planner_core::models::{AppSettings, Employee, GridState, Skill, get_predefined_skills}; // Added Skill, get_predefined_skills
 use box_planner_core::persistence::{load_app_settings, save_app_settings};
-use iced::{Command, Element, Theme, Subscription, event, mouse, keyboard}; // Added Subscription and event
+use iced::{Command, Element, Theme, mouse, keyboard}; // Added Subscription and event
 use std::fs::File; // Added File
 use std::io::BufReader; // Added BufReader
 use std::path::Path;
@@ -268,12 +268,12 @@ impl iced::Application for App {
                 }
                 Command::none()
             }
-            Message::CardDragStarted(employee_id) => {
-                self.dragged_employee_id = Some(employee_id.clone());
-                // self.selected_employee_id = None; // Optional: clear main list selection
-                println!("Card drag started: {}", employee_id);
-                Command::none()
-            }
+            // Message::CardDragStarted(employee_id) => {
+            //     self.dragged_employee_id = Some(employee_id.clone());
+            //     // self.selected_employee_id = None; // Optional: clear main list selection
+            //     println!("Card drag started: {}", employee_id);
+            //     Command::none()
+            // }
             Message::CardDroppedOnBox(dragged_employee_id, target_box_id, drop_coordinates) => {
                 println!("Card dropped: {} on box {} at coordinates: {:?}", dragged_employee_id, target_box_id, drop_coordinates);
                 // Ensure an employee was actually being dragged and it's the same one
@@ -315,7 +315,7 @@ impl iced::Application for App {
                     self.dragged_employee_id = None; // Ensure it's cleared on mismatch too
                 }
                 // If logic falls through (e.g., mismatch), return Command::none()
-                return Command::none(); 
+                Command::none() // MODIFIED: Removed explicit 'return'
             }
             Message::SkillDragStarted(skill_id) => {
                 self.dragged_skill_id = Some(skill_id.clone());
@@ -369,12 +369,12 @@ impl iced::Application for App {
                 }
                 Command::none()
             }
-            Message::CardPressed(employee_id) => {
-                self.dragged_employee_id = Some(employee_id);
-                // self.dragged_item_current_pos = None; // Or some initial mouse position if available from CardPressed
-                println!("Card pressed, drag started for: {:?}", self.dragged_employee_id); // For debugging
-                Command::none()
-            }
+            // Message::CardPressed(employee_id) => {
+            //     self.dragged_employee_id = Some(employee_id);
+            //     // self.dragged_item_current_pos = None; // Or some initial mouse position if available from CardPressed
+            //     println!("Card pressed, drag started for: {:?}", self.dragged_employee_id); // For debugging
+            //     Command::none()
+            // }
             Message::HandleGlobalEvent(event) => {
                 println!("HandleGlobalEvent received: {:?}", event); // Existing debug print
                 if self.dragged_employee_id.is_none() {
@@ -543,14 +543,7 @@ impl iced::Application for App {
                 Command::none()
             }
         }
-        // This final Command::none() is now correctly placed after the entire match,
-        // ensuring the update function always returns a Command.
-        // However, individual arms that don't explicitly return a Command
-        // should also end with Command::none() as an expression.
-        // The main change is handled by the individual arms.
-        // The overall Command::none() at the end of the function acts as a fallback
-        // if a new message variant is added and its arm doesn't return a Command.
-        Command::none()
+        // REMOVED the final Command::none() from here
     }
 
     fn view(&self) -> Element<Message> {
@@ -561,7 +554,7 @@ impl iced::Application for App {
     fn subscription(&self) -> iced::Subscription<Message> {
         // Always subscribe to global events to catch initial ButtonPressed for drag initiation,
         // as well as ongoing drag events (CursorMoved, ButtonReleased, Escape key).
-        iced:: {Command, Element, Theme, Subscription, event, mouse, keyboards; }
+        iced::event::listen().map(Message::HandleGlobalEvent)
     }
     // theme method can be added if custom theming is desired
     // fn theme(&self) -> Self::Theme {
@@ -615,7 +608,8 @@ impl iced::Application for App {
 
 #[cfg(test)]
 mod tests {
-    use super::*; 
+    use super::*;
+    use iced::Application; // <-- Add this line
     // AppSettings is already imported via super::* if App itself is, 
     // but being explicit for models can be clearer.
     // Employee and GridState are part of App struct, so super::* covers them.
@@ -830,7 +824,7 @@ mod tests {
         app.grid_state.assignments.entry(initial_box_id.clone()).or_default().push(employee_to_drag_id.clone());
         
         // Simulate starting card drag
-        app.update(Message::CardDragStarted(employee_to_drag_id.clone()));
+        // app.update(Message::CardDragStarted(employee_to_drag_id.clone())); // Commented out due to Message::CardDragStarted being removed
         assert_eq!(app.dragged_employee_id, Some(employee_to_drag_id.clone()), "dragged_employee_id should be set after CardDragStarted.");
 
         // Simulate dropping on a new box (using BoxClicked, which should forward if drag is active)
