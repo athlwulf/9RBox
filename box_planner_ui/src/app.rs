@@ -4,7 +4,7 @@ use crate::views::view_app;
 use box_planner_core::csv_processing::import_employees_from_csv; 
 use box_planner_core::models::{AppSettings, Employee, GridState, Skill, get_predefined_skills}; // Added Skill, get_predefined_skills
 use box_planner_core::persistence::{load_app_settings, save_app_settings};
-use iced::{Command, Element, Theme}; // Removed Executor and Subscription
+use iced::{Command, Element, Theme, mouse, keyboard}; // Added mouse, keyboard
 use std::fs::File; // Added File
 use std::io::BufReader; // Added BufReader
 use std::path::Path;
@@ -12,6 +12,14 @@ use std::time::Duration; // New import
 
 const SETTINGS_FILE_PATH: &str = "box_planner_ui/app_settings.json";
 const SAMPLE_EMPLOYEES_CSV_PATH: &str = "box_planner_ui/sample_employees.csv";
+
+// TODO: These are placeholders and need to be adjusted based on actual layout
+// or determined dynamically if possible.
+const GRID_AREA_TOP_LEFT_X: f32 = 300.0; // Example placeholder
+const GRID_AREA_TOP_LEFT_Y: f32 = 100.0; // Example placeholder
+const BOX_WIDTH_UNSCALED: f32 = 150.0;
+const BOX_HEIGHT_UNSCALED: f32 = 100.0;
+const BOX_SPACING: f32 = 5.0;
 
 pub struct App {
     pub employees: Vec<Employee>,
@@ -26,6 +34,7 @@ pub struct App {
     pub highlighted_box_id: Option<String>,     // New field
     pub highlighted_employee_id: Option<String>, // New field
     pub active_tab: TabId,
+    pub dragged_item_current_pos: Option<(f32, f32)>,
 }
 
 impl App {
@@ -113,6 +122,7 @@ impl App {
             highlighted_box_id: None,     // New
             highlighted_employee_id: None, // New
             active_tab: TabId::Employees,
+            dragged_item_current_pos: None,
         }
     }
 
@@ -256,9 +266,13 @@ impl iced::Application for App {
                 // self.selected_employee_id = None; // Optional: clear main list selection
                 println!("Card drag started: {}", employee_id);
             }
-            Message::CardDroppedOnBox(dragged_employee_id, target_box_id) => {
-                println!("Card dropped: {} on box {}", dragged_employee_id, target_box_id);
+            Message::CardDroppedOnBox(dragged_employee_id, target_box_id, drop_coordinates) => {
+                println!("Card dropped: {} on box {} at coordinates: {:?}", dragged_employee_id, target_box_id, drop_coordinates);
                 // Ensure an employee was actually being dragged and it's the same one
+                // Note: The check for self.dragged_employee_id.as_ref() == Some(&dragged_employee_id)
+                // might be redundant if CardPressed is the only way to set dragged_employee_id
+                // and HandleGlobalEvent only calls CardDroppedOnBox if dragged_employee_id was Some.
+                // However, keeping it for safety.
                 if self.dragged_employee_id.as_ref() == Some(&dragged_employee_id) {
                     // 1. Remove employee from any previous box in grid_state.assignments
                     for (_b_id, emp_ids_in_box) in self.grid_state.assignments.iter_mut() {
@@ -344,13 +358,73 @@ impl iced::Application for App {
                 }
             }
             Message::CardPressed(employee_id) => {
-                todo!()
+                self.dragged_employee_id = Some(employee_id);
+                // self.dragged_item_current_pos = None; // Or some initial mouse position if available from CardPressed
+                println!("Card pressed, drag started for: {:?}", self.dragged_employee_id); // For debugging
             }
             Message::HandleGlobalEvent(event) => {
-                todo!()
+                if let Some(dragged_emp_id) = self.dragged_employee_id.clone() {
+                    match event {
+                        iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                            self.dragged_item_current_pos = Some((position.x, position.y));
+                            // println!("Mouse moved to: ({}, {})", position.x, position.y); // Debugging
+                        }
+                        iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                            println!("Mouse button released event for {}", dragged_emp_id); // Keep dragged_emp_id in scope
+                            
+                            if let Some((drop_x, drop_y)) = self.dragged_item_current_pos {
+                                let scaled_box_width = BOX_WIDTH_UNSCALED * self.view_scale;
+                                let scaled_box_height = BOX_HEIGHT_UNSCALED * self.view_scale;
+
+                                let box_ids_grid = [
+                                    ["1A", "1B", "1C"],
+                                    ["2A", "2B", "2C"],
+                                    ["3A", "3B", "3C"],
+                                ];
+
+                                let mut found_target_box_id: Option<String> = None;
+                                'outer: for (row_idx, row_arr) in box_ids_grid.iter().enumerate() {
+                                    for (col_idx, box_id_str) in row_arr.iter().enumerate() {
+                                        let box_x = GRID_AREA_TOP_LEFT_X + (col_idx as f32 * (scaled_box_width + BOX_SPACING));
+                                        let box_y = GRID_AREA_TOP_LEFT_Y + (row_idx as f32 * (scaled_box_height + BOX_SPACING));
+
+                                        if drop_x >= box_x && drop_x <= box_x + scaled_box_width &&
+                                           drop_y >= box_y && drop_y <= box_y + scaled_box_height {
+                                            found_target_box_id = Some(box_id_str.to_string());
+                                            break 'outer; 
+                                        }
+                                    }
+                                }
+                                self.dragged_item_current_pos = None; // Clear pos after using it
+
+                                if let Some(final_target_box_id) = found_target_box_id {
+                                    println!("Dropped on box: {}", final_target_box_id);
+                                    return self.update(Message::CardDroppedOnBox(dragged_emp_id, final_target_box_id, Some((drop_x, drop_y))));
+                                } else {
+                                    println!("Dropped outside known grid area at ({}, {})", drop_x, drop_y);
+                                    return self.update(Message::DragCancelled);
+                                }
+                            } else {
+                                // Should not happen if CursorMoved updates pos, but handle defensively
+                                println!("Drop detected but no coordinates available, cancelling drag.");
+                                self.dragged_item_current_pos = None; // Ensure it's cleared
+                                return self.update(Message::DragCancelled);
+                            }
+                        }
+                        iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
+                            if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
+                                println!("Escape key pressed, cancelling drag");
+                                return self.update(Message::DragCancelled);
+                            }
+                        }
+                        _ => {} 
+                    }
+                }
             }
             Message::DragCancelled => {
-                todo!()
+                self.dragged_employee_id = None;
+                self.dragged_item_current_pos = None;
+                println!("Drag cancelled"); // For debugging
             }
             Message::RefreshData => {
                 println!("Refreshing data...");
@@ -452,8 +526,8 @@ impl iced::Application for App {
 //                let ghost_card_content = crate::widgets::employee_card(
 //                    employee_data, 
 //                    false, // is_expanded
-//                    None,  // was false, now None for dragged_skill_id
-//                    false, // is_highlighted (previously is_drag_source, but the 4th param of employee_card is is_highlighted)
+//                    false, // is_highlighted_for_skill_drop (not a drop target itself)
+//                    false, // is_drag_source (the original card is the source)
 //                    // No is_ghost parameter needed here as styling is done by the wrapper
 //                );
 //

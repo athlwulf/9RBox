@@ -14,7 +14,7 @@ pub enum Message {
     NotesChanged(String, String), // New: (employee_id, new_notes)
     RemoveSkillTag(String, String), // New: (employee_id, skill_id)
     CardDragStarted(String), // Parameter is employee_id
-    CardDroppedOnBox(String, String), // Parameters are employee_id, box_id
+    CardDroppedOnBox(String, String, Option<(f32, f32)>), // Parameters are employee_id, box_id, drop_coordinates
     SkillDragStarted(String),      // New: String is skill_id of the skill being dragged
     SkillDroppedOnCard(String, String), // New: (dragged_skill_id, target_employee_id)
     ClearBoxHighlight(String),    // New: String is box_id
