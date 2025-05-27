@@ -7,6 +7,8 @@ use crate::widgets::employee_card; // New import
 // Removed unused lowercase 'button' and 'text' module aliases.
 use iced::widget::{column, container, row, scrollable, Button, Column, Container, Row, Rule, Text}; 
 use iced::{Element, Length};
+use crate::styles::{BoxHighlightStyle, DefaultBoxStyle, AppBackground, medium, light, PrimaryButton, CardStyle}; // etc. as needed
+
 
 pub fn view_app(app: &App) -> Element<Message> {
     // Employee List display
@@ -18,7 +20,8 @@ pub fn view_app(app: &App) -> Element<Message> {
         }
         let button = Button::new(Text::new(full_name.clone()))
             .on_press(Message::EmployeeSelected(employee.user_id.clone()))
-            .width(Length::Fill);
+            .width(Length::Fill)
+            .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
 
         employee_list_content = employee_list_content.push(button);
     }
@@ -26,10 +29,12 @@ pub fn view_app(app: &App) -> Element<Message> {
     // Tab buttons
     let employees_tab_button = Button::new(Text::new("Employees"))
         .on_press(Message::TabSelected(TabId::Employees))
-        .width(Length::Fill);
+        .width(Length::Fill)
+        .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
     let skills_tab_button = Button::new(Text::new("Skills"))
         .on_press(Message::TabSelected(TabId::Skills))
-        .width(Length::Fill);
+        .width(Length::Fill)
+        .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
 
     let tab_buttons = row![
         employees_tab_button,
@@ -52,7 +57,8 @@ pub fn view_app(app: &App) -> Element<Message> {
             for skill in &app.available_skills {
                 let skill_button = Button::new(Text::new(skill.name.clone()))
                     .on_press(Message::SkillDragStarted(skill.id.clone()))
-                    .width(Length::Fill);
+                    .width(Length::Fill)
+                    .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
                 skills_list_content = skills_list_content.push(skill_button);
             }
 
@@ -147,7 +153,8 @@ pub fn view_app(app: &App) -> Element<Message> {
 
     let refresh_button = Button::new(Text::new("Refresh Data"))
         .on_press(Message::RefreshData)
-        .padding(5);
+        .padding(5)
+        .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
 
     // New main column including the refresh button and the existing main_layout_row (renamed to 'content_row')
     let content_with_refresh = column![
@@ -160,6 +167,7 @@ pub fn view_app(app: &App) -> Element<Message> {
 
     // Wrap content in a container for the main window
     container(content_with_refresh)
+        .style(iced::theme::Container::Custom(Box::new(AppBackground)))
         .width(Length::Fill)
         .height(Length::Fill)
         .center_x()
@@ -170,9 +178,9 @@ pub fn view_app(app: &App) -> Element<Message> {
 // New function to render the 9-Box Grid
 fn view_9box_grid(app: &App) -> Element<Message> {
     let box_ids_labels = [
-        [("1A", "7 - High Performance / Low Potential"), ("1B", "8 - High Performance / Med Potential"), ("1C", "9 - High Performance / High Potential ")],
-        [("2A", "4 - Med Performance / Low Potential"),  ("2B", "5 - Med Performance / Med Potential"),  ("2C", "6 - Med Performance / High Potential")],
-        [("3A", "1 - Low Performance / Low Potential"),  ("3B", "2 - Low Performance / Med Potential"),  ("3C", "3 - Low Performance / High Potential")],
+        [("1A", "Solid Professional"), ("1B", "Top Talent"), ("1C", "Growth Leader")],
+        [("2A", "Core Player"),        ("2B", "High Potential"), ("2C", "Rising Star")],
+        [("3A", "Under Performer"),    ("3B", "Developing"),     ("3C", "Emerging Contributor")],
     ];
 
     let mut grid_column = Column::new().spacing(5).align_items(iced::Alignment::Center);
@@ -191,13 +199,30 @@ fn view_9box_grid(app: &App) -> Element<Message> {
                     if let Some(employee) = app.employees.iter().find(|e| e.user_id == *emp_id) {
                         let is_expanded = app.expanded_card_id.as_ref() == Some(&employee.user_id);
                         let is_card_highlighted = app.highlighted_employee_id.as_ref() == Some(&employee.user_id);
-                        // Pass the currently dragged skill ID and highlight status
-                        box_content_column = box_content_column.push(employee_card(
-                            employee, 
-                            is_expanded, 
-                            app.dragged_skill_id.as_ref(),
-                            is_card_highlighted // New argument
-                        ));
+                        // Wrap the entire card (including employee_card and indicators) in a Container with CardStyle
+                        let mut card_column = Column::new()
+                            .push(employee_card(
+                                employee,
+                                is_expanded,
+                                app.dragged_skill_id.as_ref(),
+                                is_card_highlighted,
+                            ));
+
+                        let mut indicators_row = Row::new().spacing(5);
+                        // Icons for risk and impact could go here
+                        if let Some(notes) = &employee.notes {
+                            if !notes.trim().is_empty() {
+                                indicators_row = indicators_row.push(Text::new("📝").size(16));
+                            }
+                        }
+                        card_column = card_column.push(indicators_row);
+
+                        let styled_card = Container::new(card_column)
+                            .padding(5)
+                            .style(iced::theme::Container::Custom(Box::new(CardStyle)));
+
+                        box_content_column = box_content_column.push(styled_card);
+
                         employee_found_in_box = true;
                     } else {
                         // Fallback for missing employee data
@@ -215,25 +240,9 @@ fn view_9box_grid(app: &App) -> Element<Message> {
             
             let is_box_highlighted = app.highlighted_box_id.as_ref() == Some(&box_id.to_string());
             let box_container_style = if is_box_highlighted {
-                struct BoxHighlightStyle;
-                impl iced::widget::container::StyleSheet for BoxHighlightStyle {
-                    type Style = iced::Theme;
-                    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
-                        iced::widget::container::Appearance {
-                            background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 1.0, 0.0, 0.3))), // Light green, semi-transparent
-                            border: iced::Border { // Use the Border struct
-                                color: iced::Color::from_rgb(0.0, 0.9, 0.0), // Bright green
-                                width: 2.5, // Thicker border
-                                radius: iced::border::Radius::from(4.0), // Correct path for BorderRadius
-                            },
-                            shadow: Default::default(), // Explicitly set shadow if not customized
-                            text_color: None, // Or Default::default() if you don't want to change text color
-                        }
-                    }
-                }
                 iced::theme::Container::Custom(Box::new(BoxHighlightStyle))
             } else {
-                iced::theme::Container::Box // Default style
+                iced::theme::Container::Custom(Box::new(DefaultBoxStyle))
             };
 
             let grid_box_button = Button::new(
