@@ -6,9 +6,8 @@ use crate::widgets::employee_card; // New import
 // but `rule` (the module) was being imported, not `Rule` (the struct).
 // Removed unused lowercase 'button' and 'text' module aliases.
 use iced::widget::{column, container, row, scrollable, Button, Column, Container, Row, Rule, Text}; 
-use iced::{Element, Length};
-use crate::styles::{BoxHighlightStyle, DefaultBoxStyle, AppBackground, medium, light, PrimaryButton, CardStyle}; // etc. as needed
-
+use iced::{Element, Length };
+use crate::styles::{BoxHighlightStyle, DefaultBoxStyle, AppBackground, PrimaryButton, CardStyle};
 
 pub fn view_app(app: &App) -> Element<Message> {
     // Employee List display
@@ -164,9 +163,33 @@ pub fn view_app(app: &App) -> Element<Message> {
     .spacing(10)
     .padding(10); // Add some padding around the whole content
 
+    let mut layered_content = content_with_refresh;
+
+    if let (Some(dragged_id), Some((x, y))) = (&app.dragged_employee_id, app.dragged_item_current_pos) {
+        if let Some(employee_data) = app.employees.iter().find(|e| e.user_id == *dragged_id) {
+            let ghost_card = Container::new(employee_card(
+                employee_data,
+                false,
+                app.dragged_skill_id.as_ref(),
+                false,
+            ))
+            .width(Length::Fixed(150.0 * app.view_scale))
+            .padding(5)
+            .style(iced::theme::Container::Custom(Box::new(CardStyle)));
+
+            // Wrap ghost_card in a container; can't position with .translate, so let it float at the bottom
+            let ghost_overlay = Container::new(ghost_card)
+                .width(Length::Shrink)
+                .height(Length::Shrink)
+                .padding(0)
+                .style(iced::theme::Container::Transparent); // No background
+
+            layered_content = layered_content.push(ghost_overlay);
+        }
+    }
 
     // Wrap content in a container for the main window
-    container(content_with_refresh)
+    container(layered_content)
         .style(iced::theme::Container::Custom(Box::new(AppBackground)))
         .width(Length::Fill)
         .height(Length::Fill)

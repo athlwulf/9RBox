@@ -188,7 +188,9 @@ impl iced::Application for App {
         match message {
             Message::EmployeeSelected(id) => {
                 println!("Employee selected: {}", id);
-                self.selected_employee_id = Some(id);
+                self.selected_employee_id = Some(id.clone());
+                self.dragged_employee_id = Some(id.clone());
+                self.dragged_item_current_pos = None; // Set to None for consistency
                 Command::none()
             }
             Message::BoxClicked(box_id) => {
@@ -268,12 +270,11 @@ impl iced::Application for App {
                 }
                 Command::none()
             }
-            // Message::CardDragStarted(employee_id) => {
-            //     self.dragged_employee_id = Some(employee_id.clone());
-            //     // self.selected_employee_id = None; // Optional: clear main list selection
-            //     println!("Card drag started: {}", employee_id);
-            //     Command::none()
-            // }
+            Message::EmployeeDragStarted(user_id) => {
+                println!("Drag started for user_id: {}", user_id);
+                self.dragged_employee_id = Some(user_id);
+                Command::none()
+            }
             Message::CardDroppedOnBox(dragged_employee_id, target_box_id, drop_coordinates) => {
                 println!("Card dropped: {} on box {} at coordinates: {:?}", dragged_employee_id, target_box_id, drop_coordinates);
                 // Ensure an employee was actually being dragged and it's the same one
@@ -547,8 +548,65 @@ impl iced::Application for App {
     }
 
     fn view(&self) -> Element<Message> {
-        // Delegate to the view_app function in views.rs
-        view_app(self)
+        use iced::{Length, Color};
+        use iced::widget::{Container, Column, Text};
+
+        // Start with the main app view
+        let main_app_view = view_app(self);
+
+        // If an employee is being dragged, overlay a draggable card at the cursor position
+        if let (Some(emp_id), Some((x, y))) = (&self.dragged_employee_id, self.dragged_item_current_pos) {
+            if let Some(employee) = self.employees.iter().find(|e| &e.user_id == emp_id) {
+                let card = Container::new(
+                    Column::new()
+                        .spacing(4)
+                        .push(Text::new(format!("{} {}", employee.first_name, employee.last_name)).size(20).style(Color::from_rgb(0.1,0.1,0.1)))
+                        .push(Text::new(employee.current_position.clone()).size(16).style(Color::from_rgb(0.2,0.2,0.2)))
+                )
+                .padding(16)
+                .width(Length::Shrink)
+                .style(
+                    iced::theme::Container::Custom(Box::new(|_theme: &_| {
+                        iced::widget::container::Appearance {
+                            background: Some(iced::Background::Color(Color {
+                                a: 0.88, r: 1.0, g: 1.0, b: 1.0,
+                            })),
+                            text_color: None,
+                            border: iced::Border::default(),
+                            shadow: iced::Shadow::default(),
+                        }
+                    }))
+                );
+
+                let card_width: f32 = 200.0;
+                let card_height: f32 = 80.0;
+
+                let floating_card = card
+                    .width(Length::Fixed(card_width))
+                    .height(Length::Fixed(card_height))
+                    .style(
+                        iced::theme::Container::Custom(Box::new(|_theme: &_| {
+                            iced::widget::container::Appearance {
+                                background: Some(iced::Background::Color(Color {
+                                    a: 0.88, r: 1.0, g: 1.0, b: 1.0,
+                                })),
+                                text_color: None,
+                                border: iced::Border::default(),
+                                shadow: iced::Shadow::default(),
+                            }
+                        }))
+                    );
+
+                return Column::new()
+                    .push(main_app_view)
+                    .push(floating_card)
+                    .into();
+            } else {
+                main_app_view
+            }
+        } else {
+            main_app_view
+        }
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
@@ -560,50 +618,8 @@ impl iced::Application for App {
     // fn theme(&self) -> Self::Theme {
     //     Theme::default() // Or your custom theme
     // }
+
 }
-//    fn overlay(&self) -> Option<Element<Message>> {
-//        if let Some(dragged_id) = &self.dragged_employee_id { // Use dragged_employee_id
-//            if let Some(employee_data) = self.employees.iter().find(|e| e.user_id == *dragged_id) {
-//                
-//                struct GhostStyle;
-//                impl iced::widget::container::StyleSheet for GhostStyle {
-//                    type Style = iced::Theme;
-//                    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
-//                        iced::widget::container::Appearance {
-//                            background: Some(iced::Background::Color(iced::Color::from_rgba(0.85, 0.85, 0.85, 0.75))), // Light gray, semi-transparent
-//                            border: iced::Border {
-//                                color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.75),
-//                                width: 1.0,
-//                                radius: iced::border::Radius::from(4.0),
-//                            },
-//                            shadow: Default::default(),
-//                            text_color: None,
-//                        }
-//                    }
-//                }
-//
-//                let ghost_card_content = crate::widgets::employee_card(
-//                    employee_data, 
-//                    false, // is_expanded
-//                    false, // is_highlighted_for_skill_drop (not a drop target itself)
-//                    false, // is_drag_source (the original card is the source)
-//                    // No is_ghost parameter needed here as styling is done by the wrapper
-//                );
-//
-//                let ghost_element = iced::widget::Container::new(ghost_card_content)
-//                    .width(iced::Length::Fixed(150.0 * self.view_scale)) 
-//                    .height(iced::Length::Fixed(100.0 * self.view_scale)) 
-//                    .style(iced::theme::Container::Custom(Box::new(GhostStyle)));
-//                
-//                // Basic positioning: This will likely appear at the top-left of the overlay.
-//                // To position at cursor, a different approach is needed, possibly involving
-//                // a full-screen transparent container with alignment, or Canvas.
-//                // For now, just returning the styled ghost card.
-//                return Some(ghost_element.into());
-//            }
-//        }
-//        None
-//    }
 
 
 #[cfg(test)]

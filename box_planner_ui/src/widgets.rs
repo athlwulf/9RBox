@@ -1,4 +1,3 @@
-// in box_planner_ui/src/widgets.rs
 use iced::{Element, Length, Alignment}; // Alignment might be needed
 use iced::widget::{Column, Text, Container, Button, TextInput, Row}; // Row added
 use box_planner_core::models::Employee; // Skill import removed
@@ -69,10 +68,10 @@ pub fn employee_card<'a>(
             .width(Length::Fill)
             .into()
     } else {
-        // Otherwise, it's just a passive container displaying card_details
-        // Drag initiation for this card will be handled by global events, not an on_press here.
-        Container::new(card_details) // card_details is the content of the container
-            .padding(10) // Match button padding for consistent look
+        // Otherwise, it initiates drag when clicked
+        Button::new(card_details)
+            .on_press(Message::EmployeeDragStarted(employee.user_id.clone()))
+            .padding(10)
             .width(Length::Fill)
             .into()
     };

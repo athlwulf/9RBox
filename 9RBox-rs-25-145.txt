@@ -1,0 +1,2614 @@
+use crate::app::App;
+use crate::messages::{Message, TabId};
+use crate::widgets::employee_card; // New import
+// Added Rule to the import list, removed redundant Button, Column, Container, Row, Text which are covered by explicit imports later or not used.
+// The explicit individual imports like `Button, Column, Container, Row, Text` are fine,
+// but `rule` (the module) was being imported, not `Rule` (the struct).
+// Removed unused lowercase 'button' and 'text' module aliases.
+use iced::widget::{column, container, row, scrollable, Button, Column, Container, Row, Rule, Text}; 
+use iced::{Element, Length};
+use crate::styles::{BoxHighlightStyle, DefaultBoxStyle, AppBackground, medium, light, PrimaryButton, CardStyle}; // etc. as needed
+
+
+pub fn view_app(app: &App) -> Element<Message> {
+    // Employee List display
+    let mut employee_list_content = Column::new().spacing(5);
+    for employee in &app.employees {
+        let mut full_name = format!("{} {}", employee.first_name, employee.last_name);
+        if Some(employee.user_id.clone()) == app.selected_employee_id {
+            full_name = format!("> {}", full_name); // Add prefix for selected employee
+        }
+        let button = Button::new(Text::new(full_name.clone()))
+            .on_press(Message::EmployeeSelected(employee.user_id.clone()))
+            .width(Length::Fill)
+            .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
+
+        employee_list_content = employee_list_content.push(button);
+    }
+
+    // Tab buttons
+    let employees_tab_button = Button::new(Text::new("Employees"))
+        .on_press(Message::TabSelected(TabId::Employees))
+        .width(Length::Fill)
+        .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
+    let skills_tab_button = Button::new(Text::new("Skills"))
+        .on_press(Message::TabSelected(TabId::Skills))
+        .width(Length::Fill)
+        .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
+
+    let tab_buttons = row![
+        employees_tab_button,
+        skills_tab_button
+    ]
+    .spacing(5);
+
+    // Conditional content based on active tab
+    let left_panel_content = match app.active_tab {
+        TabId::Employees => {
+            column![
+                Text::new("Employee List").size(20),
+                scrollable(employee_list_content) // Display the list of buttons
+            ]
+            .spacing(10)
+        }
+        TabId::Skills => {
+            // NEW: Skills Palette View
+            let mut skills_list_content = Column::new().spacing(5).padding(5);
+            for skill in &app.available_skills {
+                let skill_button = Button::new(Text::new(skill.name.clone()))
+                    .on_press(Message::SkillDragStarted(skill.id.clone()))
+                    .width(Length::Fill)
+                    .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
+                skills_list_content = skills_list_content.push(skill_button);
+            }
+
+            column![
+                Text::new("Available Skills").size(20),
+                scrollable(skills_list_content) // Make it scrollable if many skills
+            ]
+            .spacing(10)
+        }
+    };
+
+    // Main content: A row with three columns
+    let content = row![
+        // Left Panel Section (with tabs)
+        Container::new(
+            column![
+                tab_buttons,
+                left_panel_content
+            ]
+            .spacing(10)
+        )
+        .width(Length::FillPortion(1)) // Takes 1/4 of the space
+        .height(Length::Fill)
+        .padding(10),
+
+        // Vertical Separator
+        Rule::vertical(10), // Corrected call
+
+        // 9-Box Grid Section
+        Container::new(
+            view_9box_grid(app) // Call the new function to render the grid
+        )
+        .width(Length::FillPortion(2)) // Takes 2/4 of the space
+        .height(Length::Fill)
+        .center_x()
+        .center_y()
+        .padding(10),
+
+        // Vertical Separator
+        Rule::vertical(10), // Corrected call
+
+        // Details Panel Section
+        Container::new({
+            let details_content = if let Some(selected_id) = &app.selected_employee_id {
+                if let Some(employee) = app.employees.iter().find(|e| e.user_id == *selected_id) {
+                    let name = format!("{} {}", employee.first_name, employee.last_name);
+                    let pr_2024_str = employee.pr_2024.map_or("N/A".to_string(), |p| p.to_string());
+                    let box_2024_str = employee.user_9box_2024.clone().unwrap_or_else(|| "N/A".to_string());
+                    let temp_pos_str = employee.current_temp_position.clone().unwrap_or_else(|| "N/A".to_string());
+                    let notes_str = employee.notes.clone().unwrap_or_else(|| "".to_string());
+
+
+                    column![
+                        Text::new("Employee Details").size(20),
+                        Rule::horizontal(5), // Corrected call
+                        Text::new(name).size(18),
+                        Text::new(format!("ID: {}", employee.user_id)),
+                        Text::new(format!("Position: {}", employee.current_position)),
+                        Text::new(format!("Temporary Position: {}", temp_pos_str)),
+                        Text::new(format!("PR Group 2025: {}", employee.pr_group_2025)),
+                        Text::new(format!("PR 2024: {}", pr_2024_str)),
+                        Text::new(format!("9-Box 2024: {}", box_2024_str)),
+                        Text::new("Notes:"),
+                        scrollable(Text::new(notes_str).width(Length::Fill)) // Make notes scrollable if long
+                    ]
+                    .spacing(5)
+                    .padding(5)
+                    .width(Length::Fill)
+                    .align_items(iced::Alignment::Start)
+                } else {
+                    column![Text::new("Employee not found.")]
+                        .width(Length::Fill)
+                        .height(Length::Fill) // Ensure it fills space to center vertically
+                        .align_items(iced::Alignment::Center)
+                        // .justify_content(iced::alignment::Vertical::Center) // Removed
+                }
+            } else {
+                column![Text::new("Select an employee to view details.")]
+                    .width(Length::Fill)
+                    .height(Length::Fill) // Ensure it fills space to center vertically
+                    .align_items(iced::Alignment::Center)
+                    // .justify_content(iced::alignment::Vertical::Center) // Removed
+            };
+            scrollable(details_content) // Wrap the entire details_content in a scrollable
+        })
+        .width(Length::FillPortion(1)) // Takes 1/4 of the space
+        .height(Length::Fill)
+        .padding(10)
+    ]
+    .spacing(10) // Spacing between the main sections and rules
+    .align_items(iced::Alignment::Start); // Align items to the top
+
+    let refresh_button = Button::new(Text::new("Refresh Data"))
+        .on_press(Message::RefreshData)
+        .padding(5)
+        .style(iced::theme::Button::Custom(Box::new(PrimaryButton)));
+
+    // New main column including the refresh button and the existing main_layout_row (renamed to 'content_row')
+    let content_with_refresh = column![
+        refresh_button,
+        content // 'content' is the existing main_layout_row
+    ]
+    .spacing(10)
+    .padding(10); // Add some padding around the whole content
+
+
+    // Wrap content in a container for the main window
+    container(content_with_refresh)
+        .style(iced::theme::Container::Custom(Box::new(AppBackground)))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x()
+        //.center_y() // Centering Y might not be desired if content is scrollable or long
+        .into()
+}
+
+// New function to render the 9-Box Grid
+fn view_9box_grid(app: &App) -> Element<Message> {
+    let box_ids_labels = [
+        [("1A", "Solid Professional"), ("1B", "Top Talent"), ("1C", "Growth Leader")],
+        [("2A", "Core Player"),        ("2B", "High Potential"), ("2C", "Rising Star")],
+        [("3A", "Under Performer"),    ("3B", "Developing"),     ("3C", "Emerging Contributor")],
+    ];
+
+    let mut grid_column = Column::new().spacing(5).align_items(iced::Alignment::Center);
+
+    for row_of_boxes in box_ids_labels.iter() {
+        let mut grid_row_element = Row::new().spacing(5).align_items(iced::Alignment::Start);
+        for (box_id, box_label) in row_of_boxes.iter() {
+            let mut box_content_column = Column::new()
+                .push(Text::new(*box_label).size(14))
+                .spacing(3)
+                .align_items(iced::Alignment::Start);
+
+            let mut employee_found_in_box = false;
+            if let Some(employee_ids) = app.grid_state.assignments.get(*box_id) {
+                for emp_id in employee_ids {
+                    if let Some(employee) = app.employees.iter().find(|e| e.user_id == *emp_id) {
+                        let is_expanded = app.expanded_card_id.as_ref() == Some(&employee.user_id);
+                        let is_card_highlighted = app.highlighted_employee_id.as_ref() == Some(&employee.user_id);
+                        // Wrap the entire card (including employee_card and indicators) in a Container with CardStyle
+                        let mut card_column = Column::new()
+                            .push(employee_card(
+                                employee,
+                                is_expanded,
+                                app.dragged_skill_id.as_ref(),
+                                is_card_highlighted,
+                            ));
+
+                        let mut indicators_row = Row::new().spacing(5);
+                        // Icons for risk and impact could go here
+                        if let Some(notes) = &employee.notes {
+                            if !notes.trim().is_empty() {
+                                indicators_row = indicators_row.push(Text::new("📝").size(16));
+                            }
+                        }
+                        card_column = card_column.push(indicators_row);
+
+                        let styled_card = Container::new(card_column)
+                            .padding(5)
+                            .style(iced::theme::Container::Custom(Box::new(CardStyle)));
+
+                        box_content_column = box_content_column.push(styled_card);
+
+                        employee_found_in_box = true;
+                    } else {
+                        // Fallback for missing employee data
+                        box_content_column = box_content_column.push(Text::new(format!("Employee ID: {} (Not Found)", emp_id)).size(11));
+                        employee_found_in_box = true; // Still counts as content for the box
+                    }
+                }
+            }
+            
+            // Ensure there's always some content for consistent height if no employees and no error messages
+            if !employee_found_in_box {
+                 box_content_column = box_content_column.push(Text::new(" ").size(11)); // Add a space to ensure height
+            }
+
+            
+            let is_box_highlighted = app.highlighted_box_id.as_ref() == Some(&box_id.to_string());
+            let box_container_style = if is_box_highlighted {
+                iced::theme::Container::Custom(Box::new(BoxHighlightStyle))
+            } else {
+                iced::theme::Container::Custom(Box::new(DefaultBoxStyle))
+            };
+
+            let grid_box_button = Button::new(
+                Container::new(scrollable(box_content_column)) // Make content scrollable if it overflows
+                    .width(Length::Fixed(150.0 * app.view_scale)) // Fixed size for boxes, scaled
+                    .height(Length::Fixed(100.0 * app.view_scale)) // Ensure this height allows for some content before scrolling
+                    .padding(5)
+                    .center_x() // Center content horizontally
+                    .style(box_container_style) // Apply conditional style to the container inside the button
+            )
+            .on_press(Message::BoxClicked(box_id.to_string()))
+            .width(Length::Fixed(150.0 * app.view_scale)) // Scaled button width
+            .height(Length::Fixed(100.0 * app.view_scale)); // Scaled button height
+            
+            grid_row_element = grid_row_element.push(grid_box_button);
+        }
+        grid_column = grid_column.push(grid_row_element);
+    }
+    
+    // Add a slider for scaling the view
+    let scale_slider = iced::widget::slider(0.5..=2.0, app.view_scale, Message::ScaleChanged)
+        .step(0.1);
+
+    column![
+        Text::new("9-Box Grid").size(24),
+        scale_slider, // Add slider to control scale
+        Text::new(format!("Zoom: {:.1}x", app.view_scale)).size(12),
+        grid_column,
+        Text::new(format!("Selected Employee: {:?}", app.selected_employee_id)).size(12),
+    ]
+    .spacing(10)
+    .align_items(iced::Alignment::Center)
+    .into()
+}
+mod app;
+mod messages;
+mod views;
+mod widgets;
+pub mod styles;
+
+use app::App;
+use iced::{Application, Size}; // Required for App::run
+
+pub fn main() -> iced::Result {
+    println!("Box Planner UI starting...");
+    App::run(iced::Settings {
+        window: iced::window::Settings {
+            size: Size::new(2200.0, 1200.0),
+            resizable: true,
+            ..Default::default()
+        },
+        ..iced::Settings::default()
+    })
+}use crate::messages::{Message, TabId};
+use crate::views::view_app;
+// Corrected to import the function that expects a Reader
+use box_planner_core::csv_processing::import_employees_from_csv; 
+use box_planner_core::models::{AppSettings, Employee, GridState, Skill, get_predefined_skills}; // Added Skill, get_predefined_skills
+use box_planner_core::persistence::{load_app_settings, save_app_settings};
+use iced::{Command, Element, Theme, mouse, keyboard}; // Added Subscription and event
+use std::fs::File; // Added File
+use std::io::BufReader; // Added BufReader
+use std::path::Path;
+use std::time::Duration; // New import
+
+const SETTINGS_FILE_PATH: &str = "box_planner_ui/app_settings.json";
+const SAMPLE_EMPLOYEES_CSV_PATH: &str = "box_planner_ui/sample_employees.csv";
+
+// TODO: These are placeholders and need to be adjusted based on actual layout
+// or determined dynamically if possible.
+const GRID_AREA_TOP_LEFT_X: f32 = 300.0; // Example placeholder
+const GRID_AREA_TOP_LEFT_Y: f32 = 100.0; // Example placeholder
+const BOX_WIDTH_UNSCALED: f32 = 150.0;
+const BOX_HEIGHT_UNSCALED: f32 = 100.0;
+const BOX_SPACING: f32 = 5.0;
+
+pub struct App {
+    pub employees: Vec<Employee>,
+    pub grid_state: GridState,
+    pub selected_employee_id: Option<String>,
+    pub view_scale: f32,
+    pub app_settings: AppSettings, // Added app_settings field
+    pub expanded_card_id: Option<String>, // New field
+    pub dragged_employee_id: Option<String>, // New field
+    pub available_skills: Vec<Skill>, // New field
+    pub dragged_skill_id: Option<String>, // New field
+    pub highlighted_box_id: Option<String>,     // New field
+    pub highlighted_employee_id: Option<String>, // New field
+    pub active_tab: TabId,
+    pub dragged_item_current_pos: Option<(f32, f32)>,
+}
+
+impl App {
+    pub fn new() -> Self {
+        let settings_path = Path::new(SETTINGS_FILE_PATH);
+        let mut app_settings = match load_app_settings(settings_path) {
+            Ok(settings) => {
+                println!("Successfully loaded settings from {:?}", settings_path);
+                settings
+            }
+            Err(e) => {
+                eprintln!("Failed to load settings from {:?}: {}. Using defaults and attempting to save.", settings_path, e);
+                let default_settings = AppSettings::default();
+                if let Err(save_err) = save_app_settings(settings_path, &default_settings) {
+                    eprintln!("Failed to save default settings to {:?}: {}", settings_path, save_err);
+                } else {
+                    println!("Successfully saved default settings to {:?}", settings_path);
+                }
+                default_settings
+            }
+        };
+
+        let initial_view_scale = app_settings.view_scale.unwrap_or_else(|| {
+            println!("View scale not found in settings, using default 1.0 and updating settings.");
+            let default_scale = 1.0;
+            app_settings.view_scale = Some(default_scale);
+            // Attempt to save the updated settings immediately
+            if let Err(save_err) = save_app_settings(settings_path, &app_settings) {
+                eprintln!("Failed to save updated settings (with default view_scale) to {:?}: {}", settings_path, save_err);
+            }
+            default_scale
+        });
+
+        let employees_load_result = File::open(SAMPLE_EMPLOYEES_CSV_PATH)
+            .map_err(|e| format!("Failed to open CSV file '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e))
+            .and_then(|file| {
+                let reader = BufReader::new(file);
+                // Assuming import_employees_from_csv now correctly takes a Read implementor
+                // and returns Result<Vec<Employee>, E> where E can be converted to our error string.
+                import_employees_from_csv(reader)
+                    .map_err(|e| format!("Failed to parse CSV from '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e.to_string()))
+            });
+
+        let employees = match employees_load_result {
+            Ok(loaded_employees) => {
+                if loaded_employees.is_empty() {
+                    println!("No employees loaded from CSV, using dummy data.");
+                    Self::load_dummy_employees() 
+                } else {
+                    println!("Successfully loaded {} employees from CSV.", loaded_employees.len());
+                    loaded_employees
+                }
+            }
+            Err(e) => {
+                eprintln!("Error loading employees from CSV: {}. Using dummy data instead.", e);
+                Self::load_dummy_employees()
+            }
+        };
+        let mut grid_state = GridState::default();
+
+        // Sample assignments - ensure employees are loaded first
+        if !employees.is_empty() {
+            grid_state.assignments.insert("1A".to_string(), vec![employees[0].user_id.clone()]);
+            if employees.len() > 1 {
+                 grid_state.assignments.insert("2B".to_string(), vec![employees[1].user_id.clone()]);
+            }
+            if employees.len() > 2 {
+                grid_state.assignments.insert("1A".to_string(), vec![employees[0].user_id.clone(), employees[2].user_id.clone()]); // Add a second employee to 1A
+            }
+            if employees.len() > 3 {
+                grid_state.assignments.insert("3C".to_string(), vec![employees[3].user_id.clone()]);
+            }
+        }
+
+        Self {
+            employees,
+            grid_state,
+            selected_employee_id: None,
+            view_scale: initial_view_scale, // Use loaded or default scale
+            app_settings, // Store loaded/default settings
+            expanded_card_id: None, // New
+            dragged_employee_id: None, // New
+            available_skills: get_predefined_skills(), // Initialize the new field
+            dragged_skill_id: None, // New
+            highlighted_box_id: None,     // New
+            highlighted_employee_id: None, // New
+            active_tab: TabId::Employees,
+            dragged_item_current_pos: None,
+        }
+    }
+
+    // Fallback function to load dummy employees
+    fn load_dummy_employees() -> Vec<Employee> {
+        let all_skills = get_predefined_skills(); // Get all skills
+        vec![
+            Employee {
+                user_id: "1".to_string(),
+                pr_group_2025: "GroupA".to_string(),
+                first_name: "John (Dummy)".to_string(),
+                last_name: "Doe".to_string(),
+                current_position: "Developer".to_string(),
+                current_temp_position: None,
+                pr_2021: None, pr_2022: None, pr_2023: None, pr_2024: Some(4.5),
+                user_9box_2024: Some("1A".to_string()), user_9box_2025: None,
+                notes: None, current_label: None, email: None, manager_id: None,
+                department: None, location: None, hire_date: None, 
+                skills: if all_skills.len() >= 2 { // Check if enough skills exist
+                            vec![all_skills[0].clone(), all_skills[1].clone()] // Example: assign Rust and GUI Design
+                       } else {
+                            vec![]
+                       },
+            },
+            Employee {
+                user_id: "2".to_string(),
+                pr_group_2025: "GroupB".to_string(),
+                first_name: "Jane (Dummy)".to_string(),
+                last_name: "Smith".to_string(),
+                current_position: "Designer".to_string(),
+                current_temp_position: None,
+                pr_2021: None, pr_2022: None, pr_2023: None, pr_2024: Some(4.2),
+                user_9box_2024: Some("2B".to_string()), user_9box_2025: None,
+                notes: None, current_label: None, email: None, manager_id: None,
+                department: None, location: None, hire_date: None, 
+                skills: if all_skills.len() >= 3 {
+                            vec![all_skills[2].clone()] // Example: assign Project Management
+                        } else {
+                            vec![]
+                        },
+            },
+        ]
+    }
+}
+
+impl iced::Application for App {
+    type Executor = iced::executor::Default;
+    type Message = Message;
+    type Theme = Theme;
+    type Flags = ();
+
+    fn new(_flags: ()) -> (Self, Command<Message>) {
+        (Self::new(), Command::none())
+    }
+
+    fn title(&self) -> String {
+        String::from("Box Planner")
+    }
+
+    fn update(&mut self, message: Message) -> Command<Message> {
+        // Placeholder for message handling logic
+        // This will be expanded in subsequent steps
+        match message {
+            Message::EmployeeSelected(id) => {
+                println!("Employee selected: {}", id);
+                self.selected_employee_id = Some(id);
+                Command::none()
+            }
+            Message::BoxClicked(box_id) => {
+                if let Some(dragged_emp_id) = self.dragged_employee_id.take() {
+                    // This is a drop from a card drag
+                    for (_b_id, emp_ids_in_box) in self.grid_state.assignments.iter_mut() {
+                        if let Some(pos) = emp_ids_in_box.iter().position(|id| *id == dragged_emp_id) {
+                            emp_ids_in_box.remove(pos);
+                        }
+                    }
+                    self.grid_state.assignments.retain(|_b_id, emp_ids_in_box| !emp_ids_in_box.is_empty());
+                    self.grid_state.assignments
+                        .entry(box_id.clone())
+                        .or_default()
+                        .push(dragged_emp_id.clone());
+                    
+                    println!("Dropped (via BoxClicked) employee {} to box {}", dragged_emp_id, box_id);
+                    self.highlighted_box_id = Some(box_id.clone());
+                    return Command::perform(
+                        async { tokio::time::sleep(Duration::from_millis(500)).await },
+                        move |_| Message::ClearBoxHighlight(box_id)
+                    );
+
+                } else if let Some(selected_emp_id) = self.selected_employee_id.clone() {
+                    // Original BoxClicked logic: assign from main employee list
+                    for (_b_id, emp_ids_in_box) in self.grid_state.assignments.iter_mut() {
+                        if let Some(pos) = emp_ids_in_box.iter().position(|id| *id == selected_emp_id) {
+                            emp_ids_in_box.remove(pos);
+                        }
+                    }
+                    self.grid_state.assignments.retain(|_b_id, emp_ids_in_box| !emp_ids_in_box.is_empty());
+                    self.grid_state.assignments
+                        .entry(box_id.clone())
+                        .or_default()
+                        .push(selected_emp_id.clone());
+                    println!("Assigned (via BoxClicked) employee {} to box {}", selected_emp_id, box_id);
+                    self.selected_employee_id = None; // Clear selection from main list
+                } else {
+                    println!("Box {} clicked, but no employee selected for assignment and no drag operation in progress.", box_id);
+                }
+                Command::none()
+            }
+            Message::ScaleChanged(new_scale) => {
+                println!("Scale changed: {}", new_scale);
+                self.view_scale = new_scale;
+                self.app_settings.view_scale = Some(new_scale);
+                
+                let settings_path = Path::new(SETTINGS_FILE_PATH);
+                match save_app_settings(settings_path, &self.app_settings) {
+                    Ok(_) => println!("Successfully saved settings to {:?}", settings_path),
+                    Err(e) => eprintln!("Failed to save settings to {:?}: {}", settings_path, e),
+                }
+                Command::none()
+            }
+            Message::TabSelected(tab_id) => {
+                self.active_tab = tab_id;
+                println!("Tab selected: {:?}", tab_id);
+                Command::none()
+            }
+            Message::CardClicked(employee_id) => {
+                if self.expanded_card_id.as_ref() == Some(&employee_id) {
+                    self.expanded_card_id = None; // Toggle off if already expanded
+                } else {
+                    self.expanded_card_id = Some(employee_id);
+                }
+                Command::none()
+            }
+            Message::NotesChanged(employee_id, new_notes) => {
+                if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
+                    employee.notes = Some(new_notes);
+                }
+                Command::none()
+            }
+            Message::RemoveSkillTag(employee_id, skill_id_to_remove) => {
+                if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
+                    employee.skills.retain(|skill| skill.id != skill_id_to_remove);
+                }
+                Command::none()
+            }
+            // Message::CardDragStarted(employee_id) => {
+            //     self.dragged_employee_id = Some(employee_id.clone());
+            //     // self.selected_employee_id = None; // Optional: clear main list selection
+            //     println!("Card drag started: {}", employee_id);
+            //     Command::none()
+            // }
+            Message::CardDroppedOnBox(dragged_employee_id, target_box_id, drop_coordinates) => {
+                println!("Card dropped: {} on box {} at coordinates: {:?}", dragged_employee_id, target_box_id, drop_coordinates);
+                // Ensure an employee was actually being dragged and it's the same one
+                // Note: The check for self.dragged_employee_id.as_ref() == Some(&dragged_employee_id)
+                // might be redundant if CardPressed is the only way to set dragged_employee_id
+                // and HandleGlobalEvent only calls CardDroppedOnBox if dragged_employee_id was Some.
+                // However, keeping it for safety.
+                if self.dragged_employee_id.as_ref() == Some(&dragged_employee_id) {
+                    // 1. Remove employee from any previous box in grid_state.assignments
+                    for (_b_id, emp_ids_in_box) in self.grid_state.assignments.iter_mut() {
+                        if let Some(pos) = emp_ids_in_box.iter().position(|id| *id == dragged_employee_id) {
+                            emp_ids_in_box.remove(pos);
+                        }
+                    }
+                    // Remove boxes with empty assignments after removal
+                    self.grid_state.assignments.retain(|_b_id, emp_ids_in_box| !emp_ids_in_box.is_empty());
+
+                    // 2. Add employee to the new target_box_id
+                    self.grid_state.assignments
+                        .entry(target_box_id.clone())
+                        .or_default()
+                        .push(dragged_employee_id.clone());
+                    
+                    println!("Assigned employee {} to box {}", dragged_employee_id, target_box_id);
+                    
+                    // 3. Clear the dragged_employee_id state
+                    self.dragged_employee_id = None; // Cleared after successful drop
+                    
+                    // Set highlight and schedule clearing
+                    self.highlighted_box_id = Some(target_box_id.clone());
+                    return Command::perform(
+                        async { tokio::time::sleep(Duration::from_millis(500)).await },
+                        move |_| Message::ClearBoxHighlight(target_box_id)
+                    );
+                } else {
+                    eprintln!("CardDroppedOnBox called but no/mismatched employee was being dragged. Current dragged_employee_id: {:?}", self.dragged_employee_id);
+                     // Important: If there was a mismatch or no drag, but CardDroppedOnBox was called,
+                    // we should probably clear dragged_employee_id to prevent unintended drops later.
+                    self.dragged_employee_id = None; // Ensure it's cleared on mismatch too
+                }
+                // If logic falls through (e.g., mismatch), return Command::none()
+                Command::none() // MODIFIED: Removed explicit 'return'
+            }
+            Message::SkillDragStarted(skill_id) => {
+                self.dragged_skill_id = Some(skill_id.clone());
+                // Potentially clear other drag states if necessary
+                // self.dragged_employee_id = None; 
+                println!("Skill drag started: {}", skill_id);
+                Command::none()
+            }
+            Message::SkillDroppedOnCard(skill_id, employee_id) => {
+                if self.dragged_skill_id.as_ref() == Some(&skill_id) {
+                    if let Some(employee) = self.employees.iter_mut().find(|e| e.user_id == employee_id) {
+                        // Check if employee already has this skill (by id)
+                        if !employee.skills.iter().any(|s| s.id == skill_id) {
+                            // Find the skill from available_skills to get its full details (name, id)
+                            if let Some(skill_to_add) = self.available_skills.iter().find(|s| s.id == skill_id).cloned() {
+                                employee.skills.push(skill_to_add.clone()); // Push cloned skill
+                                println!("Added skill {} to employee {}", skill_id, employee_id);
+                                
+                                // Set highlight and schedule clearing
+                                self.highlighted_employee_id = Some(employee_id.clone());
+                                self.dragged_skill_id = None; // Clear after successful processing
+                                return Command::perform(
+                                    async { tokio::time::sleep(Duration::from_millis(500)).await },
+                                    move |_| Message::ClearCardHighlight(employee_id)
+                                );
+                            } else {
+                                eprintln!("Skill {} not found in available_skills.", skill_id);
+                            }
+                        } else {
+                            println!("Employee {} already has skill {}.", employee_id, skill_id);
+                        }
+                    } else {
+                        eprintln!("Employee {} not found for skill drop.", employee_id);
+                    }
+                    self.dragged_skill_id = None; // Ensure dragged skill state is cleared
+                } else {
+                    eprintln!("SkillDroppedOnCard called but no/mismatched skill was being dragged.");
+                    self.dragged_skill_id = None; // Also clear if there's a mismatch
+                }
+                Command::none()
+            }
+            Message::ClearBoxHighlight(box_id_to_clear) => {
+                if self.highlighted_box_id.as_ref() == Some(&box_id_to_clear) {
+                    self.highlighted_box_id = None;
+                }
+                Command::none()
+            }
+            Message::ClearCardHighlight(employee_id_to_clear) => {
+                if self.highlighted_employee_id.as_ref() == Some(&employee_id_to_clear) {
+                    self.highlighted_employee_id = None;
+                }
+                Command::none()
+            }
+            // Message::CardPressed(employee_id) => {
+            //     self.dragged_employee_id = Some(employee_id);
+            //     // self.dragged_item_current_pos = None; // Or some initial mouse position if available from CardPressed
+            //     println!("Card pressed, drag started for: {:?}", self.dragged_employee_id); // For debugging
+            //     Command::none()
+            // }
+            Message::HandleGlobalEvent(event) => {
+                println!("HandleGlobalEvent received: {:?}", event); // Existing debug print
+                if self.dragged_employee_id.is_none() {
+                    // --- Part 1: No drag in progress - Check for drag initiation ---
+                    if let iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event {
+                        if let Some(press_pos) = self.dragged_item_current_pos { // Use last known cursor pos
+                            let (mouse_x, mouse_y) = press_pos;
+
+                            let scaled_box_width = BOX_WIDTH_UNSCALED * self.view_scale;
+                            let scaled_box_height = BOX_HEIGHT_UNSCALED * self.view_scale;
+                            let box_ids_grid = [
+                                ["1A", "1B", "1C"],
+                                ["2A", "2B", "2C"],
+                                ["3A", "3B", "3C"],
+                            ];
+                            let mut clicked_employee_in_box: Option<String> = None;
+
+                            'outer_hit_test: for (row_idx, row_arr) in box_ids_grid.iter().enumerate() {
+                                for (col_idx, box_id_str) in row_arr.iter().enumerate() {
+                                    let box_x = GRID_AREA_TOP_LEFT_X + (col_idx as f32 * (scaled_box_width + BOX_SPACING));
+                                    let box_y = GRID_AREA_TOP_LEFT_Y + (row_idx as f32 * (scaled_box_height + BOX_SPACING));
+
+                                    if mouse_x >= box_x && mouse_x <= box_x + scaled_box_width &&
+                                       mouse_y >= box_y && mouse_y <= box_y + scaled_box_height {
+                                        if let Some(ids_in_box) = self.grid_state.assignments.get(*box_id_str) {
+                                            if !ids_in_box.is_empty() {
+                                                clicked_employee_in_box = Some(ids_in_box[0].clone());
+                                                break 'outer_hit_test;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if let Some(emp_id_to_drag) = clicked_employee_in_box {
+                                self.dragged_employee_id = Some(emp_id_to_drag.clone());
+                                // self.dragged_item_current_pos is already set from the last CursorMoved
+                                println!("Drag initiated by global ButtonPressed for: {}", emp_id_to_drag);
+                            }
+                        } else {
+                            println!("ButtonPressed detected, but no prior CursorMoved event to get position. Drag not initiated.");
+                        }
+                    }
+                    // Always listen for CursorMoved to update position, even if not dragging
+                    else if let iced::Event::Mouse(mouse::Event::CursorMoved { position }) = event {
+                         println!("CursorMoved in HandleGlobalEvent (no drag): ({}, {})", position.x, position.y);
+                         self.dragged_item_current_pos = Some((position.x, position.y));
+                    }
+                } else {
+                    // --- Part 2: Drag is already in progress - Handle move, drop, cancel ---
+                    let dragged_emp_id = self.dragged_employee_id.as_ref().unwrap().clone(); // We know it's Some here.
+                    match event {
+                        iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                            println!("CursorMoved in HandleGlobalEvent (dragging): ({}, {})", position.x, position.y);
+                            self.dragged_item_current_pos = Some((position.x, position.y));
+                        }
+                        iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                            println!("Mouse button released event for {}", dragged_emp_id);
+                            if let Some((drop_x, drop_y)) = self.dragged_item_current_pos {
+                                let scaled_box_width = BOX_WIDTH_UNSCALED * self.view_scale;
+                                let scaled_box_height = BOX_HEIGHT_UNSCALED * self.view_scale;
+                                let box_ids_grid = [
+                                    ["1A", "1B", "1C"],
+                                    ["2A", "2B", "2C"],
+                                    ["3A", "3B", "3C"],
+                                ];
+                                let mut found_target_box_id: Option<String> = None;
+                                'outer_drop_test: for (row_idx, row_arr) in box_ids_grid.iter().enumerate() {
+                                    for (col_idx, box_id_str) in row_arr.iter().enumerate() {
+                                        let box_x = GRID_AREA_TOP_LEFT_X + (col_idx as f32 * (scaled_box_width + BOX_SPACING));
+                                        let box_y = GRID_AREA_TOP_LEFT_Y + (row_idx as f32 * (scaled_box_height + BOX_SPACING));
+                                        if drop_x >= box_x && drop_x <= box_x + scaled_box_width &&
+                                           drop_y >= box_y && drop_y <= box_y + scaled_box_height {
+                                            found_target_box_id = Some(box_id_str.to_string());
+                                            break 'outer_drop_test;
+                                        }
+                                    }
+                                }
+                                self.dragged_item_current_pos = None;
+                                if let Some(final_target_box_id) = found_target_box_id {
+                                    println!("Dropped on box: {}", final_target_box_id);
+                                    return self.update(Message::CardDroppedOnBox(dragged_emp_id, final_target_box_id, Some((drop_x, drop_y))));
+                                } else {
+                                    println!("Dropped outside known grid area at ({}, {})", drop_x, drop_y);
+                                    return self.update(Message::DragCancelled);
+                                }
+                            } else {
+                                println!("Drop detected but no coordinates available, cancelling drag.");
+                                self.dragged_item_current_pos = None;
+                                return self.update(Message::DragCancelled);
+                            }
+                        }
+                        iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
+                            if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
+                                println!("Escape key pressed, cancelling drag");
+                                return self.update(Message::DragCancelled);
+                            }
+                        }
+                        _ => {} // Ignore other events while dragging
+                    }
+                }
+                Command::none() // Default command if no specific action caused a return
+            }
+            Message::DragCancelled => {
+                self.dragged_employee_id = None;
+                self.dragged_item_current_pos = None;
+                println!("Drag cancelled"); // For debugging
+                Command::none()
+            }
+            Message::RefreshData => {
+                println!("Refreshing data...");
+
+                // Reload employees (similar to App::new)
+                let employees_load_result = File::open(SAMPLE_EMPLOYEES_CSV_PATH)
+                    .map_err(|e| format!("Failed to open CSV file '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e))
+                    .and_then(|file| {
+                        let reader = BufReader::new(file);
+                        import_employees_from_csv(reader)
+                            .map_err(|e| format!("Failed to parse CSV from '{}': {}", SAMPLE_EMPLOYEES_CSV_PATH, e.to_string()))
+                    });
+
+                self.employees = match employees_load_result {
+                    Ok(loaded_employees) => {
+                        if loaded_employees.is_empty() {
+                            println!("No employees loaded from CSV during refresh, using dummy data.");
+                            Self::load_dummy_employees()
+                        } else {
+                            println!("Successfully reloaded {} employees from CSV.", loaded_employees.len());
+                            loaded_employees
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error reloading employees from CSV: {}. Using dummy data instead.", e);
+                        Self::load_dummy_employees()
+                    }
+                };
+                
+                // Reset grid_state (similar to App::new, including any default assignments)
+                let mut new_grid_state = GridState::default();
+                if !self.employees.is_empty() { // Re-apply initial assignments based on newly loaded employees
+                    new_grid_state.assignments.insert("1A".to_string(), vec![self.employees[0].user_id.clone()]);
+                    if self.employees.len() > 1 {
+                         new_grid_state.assignments.insert("2B".to_string(), vec![self.employees[1].user_id.clone()]);
+                    }
+                    if self.employees.len() > 2 {
+                         // Assuming the same logic as App::new: add second employee to 1A if available
+                         if let Some(existing_1a) = new_grid_state.assignments.get_mut("1A") {
+                            existing_1a.push(self.employees[2].user_id.clone());
+                         } else { // Should not happen if first employee was added
+                            new_grid_state.assignments.insert("1A".to_string(), vec![self.employees[2].user_id.clone()]);
+                         }
+                    }
+                    if self.employees.len() > 3 {
+                        new_grid_state.assignments.insert("3C".to_string(), vec![self.employees[3].user_id.clone()]);
+                    }
+                }
+                self.grid_state = new_grid_state;
+
+                // Clear UI state variables
+                self.selected_employee_id = None;
+                self.expanded_card_id = None;
+                self.dragged_employee_id = None;
+                self.dragged_skill_id = None;
+                self.highlighted_box_id = None;
+                self.highlighted_employee_id = None;
+                Command::none()
+            }
+        }
+        // REMOVED the final Command::none() from here
+    }
+
+    fn view(&self) -> Element<Message> {
+        // Delegate to the view_app function in views.rs
+        view_app(self)
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        // Always subscribe to global events to catch initial ButtonPressed for drag initiation,
+        // as well as ongoing drag events (CursorMoved, ButtonReleased, Escape key).
+        iced::event::listen().map(Message::HandleGlobalEvent)
+    }
+    // theme method can be added if custom theming is desired
+    // fn theme(&self) -> Self::Theme {
+    //     Theme::default() // Or your custom theme
+    // }
+}
+//    fn overlay(&self) -> Option<Element<Message>> {
+//        if let Some(dragged_id) = &self.dragged_employee_id { // Use dragged_employee_id
+//            if let Some(employee_data) = self.employees.iter().find(|e| e.user_id == *dragged_id) {
+//                
+//                struct GhostStyle;
+//                impl iced::widget::container::StyleSheet for GhostStyle {
+//                    type Style = iced::Theme;
+//                    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+//                        iced::widget::container::Appearance {
+//                            background: Some(iced::Background::Color(iced::Color::from_rgba(0.85, 0.85, 0.85, 0.75))), // Light gray, semi-transparent
+//                            border: iced::Border {
+//                                color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.75),
+//                                width: 1.0,
+//                                radius: iced::border::Radius::from(4.0),
+//                            },
+//                            shadow: Default::default(),
+//                            text_color: None,
+//                        }
+//                    }
+//                }
+//
+//                let ghost_card_content = crate::widgets::employee_card(
+//                    employee_data, 
+//                    false, // is_expanded
+//                    false, // is_highlighted_for_skill_drop (not a drop target itself)
+//                    false, // is_drag_source (the original card is the source)
+//                    // No is_ghost parameter needed here as styling is done by the wrapper
+//                );
+//
+//                let ghost_element = iced::widget::Container::new(ghost_card_content)
+//                    .width(iced::Length::Fixed(150.0 * self.view_scale)) 
+//                    .height(iced::Length::Fixed(100.0 * self.view_scale)) 
+//                    .style(iced::theme::Container::Custom(Box::new(GhostStyle)));
+//                
+//                // Basic positioning: This will likely appear at the top-left of the overlay.
+//                // To position at cursor, a different approach is needed, possibly involving
+//                // a full-screen transparent container with alignment, or Canvas.
+//                // For now, just returning the styled ghost card.
+//                return Some(ghost_element.into());
+//            }
+//        }
+//        None
+//    }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::Application; // <-- Add this line
+    // AppSettings is already imported via super::* if App itself is, 
+    // but being explicit for models can be clearer.
+    // Employee and GridState are part of App struct, so super::* covers them.
+    // use box_planner_core::models::{Employee, GridState, AppSettings}; // Not strictly needed if super::* is used well.
+
+    // Helper to create a basic App for testing.
+    // It relies on App::new()'s existing behavior for handling missing files
+    // (falling back to dummy employees and default settings).
+    fn setup_app() -> App {
+        // To prevent tests from creating/modifying actual files in the project directory,
+        // ideally, paths should be configurable or mocked.
+        // For now, we accept that App::new() might try to read/write
+        // "box_planner_ui/app_settings.json" and read "box_planner_ui/sample_employees.csv".
+        // The current App::new() logic falls back to defaults/dummies, which is testable.
+        App::new()
+    }
+
+    // Note: The test for `dragged_employee_id` was for the old implementation.
+    // The field is now `drag_source_card_id`.
+    // The test `test_card_drag_and_drop_logic` should be updated or replaced
+    // once the full drag-and-drop logic with overlay and mouse release is in place.
+    // For now, I will keep the existing test as it tests the press-and-click-box logic.
+    // A new test for the overlay itself is not straightforward as it's a visual element.
+
+    #[test]
+    fn test_initial_state() {
+        let app = setup_app();
+        assert_eq!(app.selected_employee_id, None, "Selected employee ID should be None initially.");
+        assert_eq!(app.active_tab, TabId::Employees, "Default active tab should be Employees.");
+        
+        // Check view_scale based on AppSettings default or loaded settings.
+        // AppSettings::default() sets view_scale to Some(1.0).
+        // App::new() uses this or a value from the file.
+        assert_eq!(app.view_scale, app.app_settings.view_scale.unwrap_or(1.0), "View scale should match settings or default.");
+        assert!(app.view_scale > 0.0, "View scale must be positive.");
+
+        assert!(!app.employees.is_empty(), "Employees list should not be empty (dummy data should load).");
+        
+        // Check default app_settings state (theme_preference is a good indicator)
+        // This implicitly tests that AppSettings::default() was called if file was missing.
+        let default_settings = AppSettings::default();
+        if !Path::new(SETTINGS_FILE_PATH).exists() {
+            assert_eq!(app.app_settings.theme_preference, default_settings.theme_preference, "Theme preference should be default if no settings file.");
+            assert_eq!(app.app_settings.view_scale, default_settings.view_scale, "View scale in settings should be default if no settings file.");
+        } else {
+            // If file exists, we can't easily know its content here without reading it again,
+            // but we know app.app_settings was populated.
+            println!("Note: test_initial_state assumes if settings file exists, it's valid or App::new handled errors.");
+        }
+    }
+
+    #[test]
+    fn test_employee_selected() {
+        let mut app = setup_app();
+        let test_emp_id = "emp_test_id_selected".to_string();
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        assert_eq!(app.selected_employee_id, Some(test_emp_id), "Selected employee ID was not set correctly.");
+    }
+
+    #[test]
+    fn test_scale_changed() {
+        let mut app = setup_app();
+        let new_scale = 1.75;
+        app.update(Message::ScaleChanged(new_scale));
+        assert_eq!(app.view_scale, new_scale, "View scale in App struct was not updated.");
+        assert_eq!(app.app_settings.view_scale, Some(new_scale), "View scale in AppSettings was not updated.");
+        // We expect App::new to create a default settings file if it doesn't exist,
+        // or load existing. Message::ScaleChanged should then save it.
+        // We can check if the file reflects this after the test, but that's more of an integration test.
+        // For unit test, checking the in-memory state is key.
+    }
+
+    #[test]
+    fn test_assign_employee_to_box() {
+        let mut app = setup_app();
+        // App::new() loads dummy employees if CSV fails or is empty.
+        // This test relies on at least one employee being available.
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty, cannot run test.");
+        let test_emp_id = app.employees[0].user_id.clone();
+        let target_box_id = "TestBox_Assign".to_string();
+
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        app.update(Message::BoxClicked(target_box_id.clone()));
+
+        assert!(app.grid_state.assignments.get(&target_box_id).is_some(), "Target box should exist in assignments.");
+        assert!(app.grid_state.assignments.get(&target_box_id).unwrap().contains(&test_emp_id), "Employee was not assigned to the target box.");
+        assert_eq!(app.selected_employee_id, None, "Selected employee ID should be cleared after assignment.");
+    }
+    
+    #[test]
+    fn test_move_employee_between_boxes() {
+        let mut app = setup_app();
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty, cannot run test.");
+        let test_emp_id = app.employees[0].user_id.clone();
+        let initial_box_id = "BoxAlpha_Move".to_string();
+        let target_box_id = "BoxBeta_Move".to_string();
+
+        // First assignment to initial_box_id
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        app.update(Message::BoxClicked(initial_box_id.clone()));
+        
+        // Now select again and move to target_box_id
+        app.update(Message::EmployeeSelected(test_emp_id.clone()));
+        app.update(Message::BoxClicked(target_box_id.clone()));
+
+        assert!(app.grid_state.assignments.get(&target_box_id).is_some(), "Target box for move should exist.");
+        assert!(app.grid_state.assignments.get(&target_box_id).unwrap().contains(&test_emp_id), "Employee was not moved to the target box.");
+        
+        // Check if employee is removed from the old box or if the old box is removed if empty
+        let initial_box_assignments = app.grid_state.assignments.get(&initial_box_id);
+        assert!(initial_box_assignments.map_or(true, |ids| !ids.contains(&test_emp_id)), "Employee was not removed from the initial box.");
+        
+        assert_eq!(app.selected_employee_id, None, "Selected employee ID should be cleared after moving.");
+    }
+    
+    #[test]
+    fn test_click_box_no_employee_selected() {
+        let mut app = setup_app();
+        // Clone initial state of assignments. 
+        // App::new() might populate assignments with dummy data, so we capture that.
+        let initial_assignments = app.grid_state.assignments.clone();
+        let target_box_id = "AnyBox_NoSelect".to_string();
+        
+        app.update(Message::BoxClicked(target_box_id.clone()));
+        
+        // Assert that assignments are unchanged.
+        // If the target_box_id was part of initial_assignments, its content should be the same.
+        // If it wasn't, it should still not be there.
+        assert_eq!(app.grid_state.assignments, initial_assignments, "Assignments should not change if no employee is selected.");
+    }
+
+    #[test]
+    fn test_tab_selection() {
+        let mut app = setup_app();
+
+        // Assert initial state (already covered by test_initial_state but good for clarity)
+        assert_eq!(app.active_tab, TabId::Employees, "Initial active tab should be Employees.");
+
+        // Select Skills tab
+        app.update(Message::TabSelected(TabId::Skills));
+        assert_eq!(app.active_tab, TabId::Skills, "Active tab should be Skills after selection.");
+
+        // Select Employees tab again
+        app.update(Message::TabSelected(TabId::Employees));
+        assert_eq!(app.active_tab, TabId::Employees, "Active tab should be back to Employees after selection.");
+    }
+
+    #[test]
+    fn test_add_and_prevent_duplicate_skill() {
+        let mut app = setup_app(); 
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty.");
+        assert!(!app.available_skills.is_empty(), "Prerequisite: Available skills list is empty.");
+
+        let employee_id = app.employees[0].user_id.clone();
+        let skill_to_add = app.available_skills[0].clone();
+
+        // Simulate starting a skill drag
+        app.update(Message::SkillDragStarted(skill_to_add.id.clone()));
+        assert_eq!(app.dragged_skill_id, Some(skill_to_add.id.clone()), "dragged_skill_id should be set after SkillDragStarted.");
+
+        // Drop the skill on the card
+        app.update(Message::SkillDroppedOnCard(skill_to_add.id.clone(), employee_id.clone()));
+        
+        let employee = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert!(employee.skills.iter().any(|s| s.id == skill_to_add.id), "Employee should have the skill after first drop.");
+        assert_eq!(app.dragged_skill_id, None, "dragged_skill_id should be cleared after drop.");
+
+        let skill_count_before_duplicate_add = employee.skills.len();
+
+        // Attempt to add the same skill again
+        app.update(Message::SkillDragStarted(skill_to_add.id.clone())); // Start drag again
+        app.update(Message::SkillDroppedOnCard(skill_to_add.id.clone(), employee_id.clone()));
+        
+        let employee_after_duplicate_add = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert_eq!(employee_after_duplicate_add.skills.len(), skill_count_before_duplicate_add, "Skill count should not increase on duplicate add.");
+        assert_eq!(app.dragged_skill_id, None, "dragged_skill_id should be cleared even if skill was not added due to duplication.");
+    }
+
+    #[test]
+    fn test_skill_removal() {
+        let mut app = setup_app();
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty.");
+        assert!(!app.available_skills.is_empty(), "Prerequisite: Available skills list is empty.");
+
+        let employee_id = app.employees[0].user_id.clone();
+        let skill_to_manage = app.available_skills[0].clone();
+
+        // First, add the skill to the employee
+        app.update(Message::SkillDragStarted(skill_to_manage.id.clone()));
+        app.update(Message::SkillDroppedOnCard(skill_to_manage.id.clone(), employee_id.clone()));
+        
+        let employee_with_skill = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert!(employee_with_skill.skills.iter().any(|s| s.id == skill_to_manage.id), "Skill should be present before removal.");
+
+        // Now, remove the skill
+        app.update(Message::RemoveSkillTag(employee_id.clone(), skill_to_manage.id.clone()));
+        
+        let employee_after_removal = app.employees.iter().find(|e| e.user_id == employee_id).unwrap();
+        assert!(!employee_after_removal.skills.iter().any(|s| s.id == skill_to_manage.id), "Skill should be removed.");
+    }
+
+    #[test]
+    fn test_card_drag_and_drop_logic() {
+        let mut app = setup_app();
+        assert!(!app.employees.is_empty(), "Prerequisite: Employee list is empty.");
+        
+        let employee_to_drag_id = app.employees[0].user_id.clone();
+        let initial_box_id = "TestBoxInit".to_string();
+        let target_box_id = "TestBoxTarget".to_string();
+
+        // Manually assign employee to an initial box for testing this specific logic
+        app.grid_state.assignments.entry(initial_box_id.clone()).or_default().push(employee_to_drag_id.clone());
+        
+        // Simulate starting card drag
+        // app.update(Message::CardDragStarted(employee_to_drag_id.clone())); // Commented out due to Message::CardDragStarted being removed
+        assert_eq!(app.dragged_employee_id, Some(employee_to_drag_id.clone()), "dragged_employee_id should be set after CardDragStarted.");
+
+        // Simulate dropping on a new box (using BoxClicked, which should forward if drag is active)
+        app.update(Message::BoxClicked(target_box_id.clone()));
+        
+        // Note: BoxClicked forwards to CardDroppedOnBox which handles the logic.
+        // Need to check results after that internal forwarding.
+        // The direct CardDroppedOnBox handler should have done the work.
+
+        assert!(app.grid_state.assignments.get(&initial_box_id).map_or(true, |ids| !ids.contains(&employee_to_drag_id)), "Employee should be removed from the initial box.");
+        assert!(app.grid_state.assignments.get(&target_box_id).map_or(false, |ids| ids.contains(&employee_to_drag_id)), "Employee should be added to the target box.");
+        assert_eq!(app.dragged_employee_id, None, "dragged_employee_id should be cleared after drop.");
+    }
+    
+    #[test]
+    fn test_refresh_data_core_state_reset() {
+        let mut app = setup_app();
+        assert!(app.employees.len() >= 1, "Need at least one employee for this test");
+
+        // 1. Modify some state
+        let original_view_scale = app.view_scale; // Store for later comparison
+        let employee_id_to_select = app.employees[0].user_id.clone();
+        
+        // Assign an employee to a non-default box
+        let test_box_id = "TestBoxForRefresh".to_string();
+        app.update(Message::EmployeeSelected(employee_id_to_select.clone()));
+        app.update(Message::BoxClicked(test_box_id.clone()));
+        assert!(app.grid_state.assignments.get(&test_box_id).is_some(), "Employee should be in test box before refresh.");
+
+        // Set other UI states
+        app.selected_employee_id = Some("some_selected_id".to_string());
+        app.expanded_card_id = Some("some_expanded_id".to_string());
+        app.dragged_employee_id = Some("some_dragged_emp_id".to_string());
+        app.dragged_skill_id = Some("some_dragged_skill_id".to_string());
+        app.highlighted_box_id = Some("some_highlighted_box".to_string());
+        app.highlighted_employee_id = Some("some_highlighted_emp".to_string());
+
+        // 2. Action: Send Message::RefreshData
+        app.update(Message::RefreshData);
+
+        // 3. Assertions
+        // Check if grid_state.assignments are reset to initial state.
+        // This depends on the default assignments in App::new() for the dummy data.
+        // For example, dummy employee "1" is usually assigned to "1A".
+        let first_dummy_employee_id = "1".to_string(); // Assuming this is a known ID from load_dummy_employees
+        let is_first_dummy_in_1a_after_refresh = app.grid_state.assignments
+            .get("1A")
+            .map_or(false, |ids| ids.contains(&first_dummy_employee_id));
+        
+        // If your dummy data load doesn't always put employee "1" in "1A", adjust this assertion.
+        // Or, check that the test_box_id assignment is gone.
+        assert!(!app.grid_state.assignments.get(&test_box_id).map_or(false, |ids| ids.contains(&employee_id_to_select)), "Custom assignment should be cleared after refresh.");
+        if app.employees.iter().any(|e| e.user_id == first_dummy_employee_id) { // Only assert if dummy employee "1" exists
+             assert!(is_first_dummy_in_1a_after_refresh, "Employee '1' should be in box '1A' after refresh if dummy data is loaded.");
+        }
+
+
+        // Assert UI state variables are cleared
+        assert_eq!(app.selected_employee_id, None, "selected_employee_id should be None.");
+        assert_eq!(app.expanded_card_id, None, "expanded_card_id should be None.");
+        assert_eq!(app.dragged_employee_id, None, "dragged_employee_id should be None.");
+        assert_eq!(app.dragged_skill_id, None, "dragged_skill_id should be None.");
+        assert_eq!(app.highlighted_box_id, None, "highlighted_box_id should be None.");
+        assert_eq!(app.highlighted_employee_id, None, "highlighted_employee_id should be None.");
+
+        // Assert that view_scale (part of AppSettings) is NOT reset
+        assert_eq!(app.view_scale, original_view_scale, "View scale should not be reset by RefreshData.");
+        assert_eq!(app.app_settings.view_scale, Some(original_view_scale), "View scale in AppSettings should not be reset.");
+
+        // Assert that available_skills is NOT reset (it's loaded once in new())
+        assert!(!app.available_skills.is_empty(), "Available skills should still be present.");
+    }
+}
+use iced::widget::text;
+use iced::widget::{button, container};
+use iced::{Background, Color, Theme};
+
+// Grayscale color palette as functions
+pub fn lightest() -> Color { Color::from_rgb8(0xF2, 0xF2, 0xF2) }
+pub fn light() -> Color { Color::from_rgb8(0xBF, 0xBF, 0xBF) }
+pub fn medium() -> Color { Color::from_rgb8(0x73, 0x73, 0x73) }
+pub fn dark() -> Color { Color::from_rgb8(0x59, 0x59, 0x59) }
+pub fn darkest() -> Color { Color::from_rgb8(0x0D, 0x0D, 0x0D) }
+
+// Highlighted container style for grid boxes
+pub struct BoxHighlightStyle;
+impl container::StyleSheet for BoxHighlightStyle {
+    type Style = Theme;
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(Background::Color(Color::from_rgba8(0xBF, 0xBF, 0xBF, 0.3))), // 0.3 alpha as float
+            border: iced::Border {
+                color: medium(),
+                width: 2.5,
+                radius: iced::border::Radius::from(4.0),
+            },
+            shadow: Default::default(),
+            text_color: None,
+        }
+    }
+}
+
+
+pub struct PrimaryButton;
+impl button::StyleSheet for PrimaryButton {
+    type Style = Theme;
+    fn active(&self, _style: &Self::Style) -> button::Appearance {
+        button::Appearance {
+            background: Some(Background::Color(medium())),
+            border: iced::Border {
+                radius: iced::border::Radius::from(5.0),
+                ..Default::default()
+            },
+            text_color: lightest(),
+            ..Default::default()
+        }
+    }
+
+    fn hovered(&self, _style: &Self::Style) -> button::Appearance {
+        button::Appearance {
+            background: Some(Background::Color(dark())),
+            border: iced::Border {
+                radius: iced::border::Radius::from(5.0),
+                ..Default::default()
+            },
+            text_color: lightest(),
+            ..Default::default()
+        }
+    }
+
+    fn pressed(&self, _style: &Self::Style) -> button::Appearance {
+        button::Appearance {
+            background: Some(Background::Color(darkest())),
+            border: iced::Border {
+                radius: iced::border::Radius::from(5.0),
+                ..Default::default()
+            },
+            text_color: lightest(),
+            ..Default::default()
+        }
+    }
+}
+
+// Style for unhighlighted 9-box containers
+pub struct DefaultBoxStyle;
+impl container::StyleSheet for DefaultBoxStyle {
+    type Style = Theme;
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(Background::Color(light())),
+            border: iced::Border {
+                color: medium(),
+                width: 2.0,
+                radius: iced::border::Radius::from(4.0),
+            },
+            shadow: Default::default(),
+            text_color: None,
+        }
+    }
+}
+
+// Style for the root application background
+pub struct AppBackground;
+impl container::StyleSheet for AppBackground {
+    type Style = Theme;
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(Background::Color(lightest())),
+            ..Default::default()
+        }
+    }
+}
+// Dynamic style for grid boxes with specific background colors
+pub struct ThemedBoxStyle(pub Color);
+impl container::StyleSheet for ThemedBoxStyle {
+    type Style = Theme;
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(Background::Color(self.0)),
+            border: iced::Border {
+                color: Color::from_rgba(
+                    self.0.r * 0.8,
+                    self.0.g * 0.8,
+                    self.0.b * 0.8,
+                    self.0.a,
+                ),
+                width: 2.0,
+                radius: iced::border::Radius::from(6.0),
+            },
+            shadow: iced::Shadow {
+                offset: iced::Vector::new(1.0, 2.0),
+                color: Color::from_rgba8(0, 0, 0, 0.15),
+                blur_radius: 4.0,
+            },
+            text_color: None,
+        }
+    }
+}
+// Style for employee cards (tile-like appearance)
+pub struct CardStyle;
+impl container::StyleSheet for CardStyle {
+    type Style = Theme;
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(Background::Color(Color::WHITE)),
+            border: iced::Border {
+                color: medium(),
+                width: 1.0,
+                radius: iced::border::Radius::from(6.0),
+            },
+            shadow: iced::Shadow {
+                offset: iced::Vector::new(0.0, 1.0),
+                color: Color::from_rgba8(0, 0, 0, 0.1),
+                blur_radius: 3.0,
+            },
+            text_color: Some(Color::BLACK),
+        }
+    }
+}
+pub mod text_styles {
+    use super::*;
+
+    pub fn heading(text: &str) -> text::Text<'_> {
+        text::Text::new(text)
+            .size(24)
+            .style(Color::BLACK)
+    }
+
+    pub fn subheading(text: &str) -> text::Text<'_> {
+        text::Text::new(text)
+            .size(20)
+            .style(dark())
+    }
+
+    pub fn body(text: &str) -> text::Text<'_> {
+        text::Text::new(text)
+            .size(16)
+            .style(medium())
+    }
+
+    pub fn light_body(text: &str) -> text::Text<'_> {
+        text::Text::new(text)
+            .size(16)
+            .style(dark())
+    }
+}#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabId {
+    Employees,
+    Skills,
+}
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    EmployeeSelected(String), // Parameter is employee_id
+    BoxClicked(String),       // Parameter is box_id (e.g., "1A", "2B")
+    ScaleChanged(f32),
+    TabSelected(TabId),
+    CardClicked(String), // New: String is employee_id
+    NotesChanged(String, String), // New: (employee_id, new_notes)
+    RemoveSkillTag(String, String), // New: (employee_id, skill_id)
+    // CardDragStarted(String), // Parameter is employee_id
+    CardDroppedOnBox(String, String, Option<(f32, f32)>), // Parameters are employee_id, box_id, drop_coordinates
+    SkillDragStarted(String),      // New: String is skill_id of the skill being dragged
+    SkillDroppedOnCard(String, String), // New: (dragged_skill_id, target_employee_id)
+    ClearBoxHighlight(String),    // New: String is box_id
+    ClearCardHighlight(String),   // New: String is employee_id
+    RefreshData,                  // New
+    // CardPressed(String),          // New: User has pressed the mouse button on an employee card (employee_id)
+    HandleGlobalEvent(iced::Event), // New: For events from the subscription
+    DragCancelled,                 // New: If drag is cancelled (e.g., by Esc)
+    // Add other messages as UI interactions are defined
+}// in box_planner_ui/src/widgets.rs
+use iced::{Element, Length, Alignment}; // Alignment might be needed
+use iced::widget::{Column, Text, Container, Button, TextInput, Row}; // Row added
+use box_planner_core::models::Employee; // Skill import removed
+use crate::messages::Message;
+
+// New signature: note dragged_skill_id and is_highlighted parameters
+pub fn employee_card<'a>(
+    employee: &'a Employee, 
+    is_expanded: bool, 
+    dragged_skill_id: Option<&'a String>, // Pass current dragged skill ID
+    is_highlighted: bool // New parameter for highlighting
+) -> Element<'a, Message> {
+    let full_name = format!("{} {}", employee.first_name, employee.last_name);
+    let position = employee.current_position.clone();
+    let pr_score = employee.pr_2024.map_or("N/A".to_string(), |score| score.to_string());
+
+    let mut card_details = Column::new()
+        .spacing(5)
+        .push(Text::new(full_name).size(18))
+        .push(Text::new(format!("Position: {}", position)))
+        .push(Text::new(format!("PR 2024: {}", pr_score)));
+
+    // Add skill tags display
+    if !employee.skills.is_empty() {
+        let mut skills_section = Column::new().spacing(2).align_items(Alignment::Start);
+        // skills_section = skills_section.push(Text::new("Skills:").size(14)); // Optional title for skills
+        for skill in &employee.skills {
+            let skill_tag_row = Row::new()
+                .spacing(4)
+                .align_items(Alignment::Center)
+                .push(Text::new(skill.name.clone()).size(12)) // Display skill name
+                .push(
+                    Button::new(Text::new("×").size(12)) // Small "x" button
+                        .on_press(Message::RemoveSkillTag(employee.user_id.clone(), skill.id.clone()))
+                        .padding(2)
+                        // .style(theme::Button::Destructive) // Optional: style for remove button
+                );
+            skills_section = skills_section.push(skill_tag_row);
+        }
+        card_details = card_details.push(skills_section);
+    }
+
+    // Notes Toggle Button and TextInput section
+    let notes_button = Button::new(Text::new(if is_expanded { "[Collapse Notes]" } else { "[Expand Notes]" }))
+        .on_press(Message::CardClicked(employee.user_id.clone())) // This toggles notes
+        .padding(2);
+    
+    card_details = card_details.push(notes_button); // Add notes button to the details column
+
+    if is_expanded {
+        card_details = card_details.push( // Add TextInput to details column if expanded
+            TextInput::new(
+                "Enter notes...",
+                employee.notes.as_deref().unwrap_or(""),
+            )
+            .on_input(move |new_value| Message::NotesChanged(employee.user_id.clone(), new_value))
+            .padding(5)
+        );
+    }
+    
+    // card_details is built up here...
+
+    let interactive_card_area: Element<'a, Message> = if let Some(d_skill_id) = dragged_skill_id {
+        // If a skill is being dragged, this card becomes a drop target (Button)
+        Button::new(card_details) // card_details is the content of the button
+            .on_press(Message::SkillDroppedOnCard(d_skill_id.clone(), employee.user_id.clone()))
+            .padding(10)
+            .width(Length::Fill)
+            .into()
+    } else {
+        // Otherwise, it's just a passive container displaying card_details
+        // Drag initiation for this card will be handled by global events, not an on_press here.
+        Container::new(card_details) // card_details is the content of the container
+            .padding(10) // Match button padding for consistent look
+            .width(Length::Fill)
+            .into()
+    };
+
+    // The rest of the styling container:
+    Container::new(interactive_card_area)
+        .width(Length::Fill)
+        .style(if is_highlighted {
+            struct CardHighlightStyle;
+            impl iced::widget::container::StyleSheet for CardHighlightStyle {
+                type Style = iced::Theme;
+                fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+                    iced::widget::container::Appearance {
+                        background: Some(iced::Background::Color(iced::Color::from_rgb(0.8, 1.0, 0.8))), // Light green
+                        border: iced::Border {
+                            color: iced::Color::from_rgb(0.0, 0.8, 0.0), // Darker green border
+                            width: 1.0,
+                            radius: iced::border::Radius::from(4.0), // Correct path
+                        },
+                        shadow: Default::default(),
+                        text_color: None,
+                    }
+                }
+            }
+            iced::theme::Container::Custom(Box::new(CardHighlightStyle))
+        } else {
+            // Assuming iced::theme::Container::Box is the default/non-highlighted style.
+            // If you have a specific normal card style, use that instead.
+            iced::theme::Container::Box 
+        })
+        .into()
+}
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: aliceblue;"></div>
+pub const ALICEBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(240, 248, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: antiquewhite;"></div>
+pub const ANTIQUEWHITE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(250, 235, 215);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: aqua;"></div>
+pub const AQUA: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 255, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: aquamarine;"></div>
+pub const AQUAMARINE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(127, 255, 212);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: azure;"></div>
+pub const AZURE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(240, 255, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: beige;"></div>
+pub const BEIGE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(245, 245, 220);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: bisque;"></div>
+pub const BISQUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 228, 196);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: black;"></div>
+pub const BLACK: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 0, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: blanchedalmond;"></div>
+pub const BLANCHEDALMOND: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 235, 205);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: blue;"></div>
+pub const BLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 0, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: blueviolet;"></div>
+pub const BLUEVIOLET: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(138, 43, 226);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: brown;"></div>
+pub const BROWN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(165, 42, 42);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: burlywood;"></div>
+pub const BURLYWOOD: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(222, 184, 135);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: cadetblue;"></div>
+pub const CADETBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(95, 158, 160);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: chartreuse;"></div>
+pub const CHARTREUSE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(127, 255, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: chocolate;"></div>
+pub const CHOCOLATE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(210, 105, 30);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: coral;"></div>
+pub const CORAL: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 127, 80);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: cornflowerblue;"></div>
+pub const CORNFLOWERBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(100, 149, 237);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: cornsilk;"></div>
+pub const CORNSILK: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 248, 220);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: crimson;"></div>
+pub const CRIMSON: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(220, 20, 60);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: cyan;"></div>
+pub const CYAN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 255, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkblue;"></div>
+pub const DARKBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 0, 139);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkcyan;"></div>
+pub const DARKCYAN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 139, 139);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkgoldenrod;"></div>
+pub const DARKGOLDENROD: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(184, 134, 11);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkgray;"></div>
+pub const DARKGRAY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(169, 169, 169);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkgreen;"></div>
+pub const DARKGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 100, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkgrey;"></div>
+pub const DARKGREY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(169, 169, 169);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkkhaki;"></div>
+pub const DARKKHAKI: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(189, 183, 107);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkmagenta;"></div>
+pub const DARKMAGENTA: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(139, 0, 139);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkolivegreen;"></div>
+pub const DARKOLIVEGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(85, 107, 47);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkorange;"></div>
+pub const DARKORANGE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 140, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkorchid;"></div>
+pub const DARKORCHID: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(153, 50, 204);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkred;"></div>
+pub const DARKRED: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(139, 0, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darksalmon;"></div>
+pub const DARKSALMON: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(233, 150, 122);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkseagreen;"></div>
+pub const DARKSEAGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(143, 188, 143);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkslateblue;"></div>
+pub const DARKSLATEBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(72, 61, 139);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkslategray;"></div>
+pub const DARKSLATEGRAY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(47, 79, 79);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkslategrey;"></div>
+pub const DARKSLATEGREY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(47, 79, 79);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkturquoise;"></div>
+pub const DARKTURQUOISE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 206, 209);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: darkviolet;"></div>
+pub const DARKVIOLET: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(148, 0, 211);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: deeppink;"></div>
+pub const DEEPPINK: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 20, 147);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: deepskyblue;"></div>
+pub const DEEPSKYBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 191, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: dimgray;"></div>
+pub const DIMGRAY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(105, 105, 105);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: dimgrey;"></div>
+pub const DIMGREY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(105, 105, 105);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: dodgerblue;"></div>
+pub const DODGERBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(30, 144, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: firebrick;"></div>
+pub const FIREBRICK: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(178, 34, 34);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: floralwhite;"></div>
+pub const FLORALWHITE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 250, 240);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: forestgreen;"></div>
+pub const FORESTGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(34, 139, 34);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: fuchsia;"></div>
+pub const FUCHSIA: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 0, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: gainsboro;"></div>
+pub const GAINSBORO: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(220, 220, 220);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: ghostwhite;"></div>
+pub const GHOSTWHITE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(248, 248, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: gold;"></div>
+pub const GOLD: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 215, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: goldenrod;"></div>
+pub const GOLDENROD: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(218, 165, 32);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: gray;"></div>
+pub const GRAY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(128, 128, 128);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: grey;"></div>
+pub const GREY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(128, 128, 128);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: green;"></div>
+pub const GREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 128, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: greenyellow;"></div>
+pub const GREENYELLOW: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(173, 255, 47);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: honeydew;"></div>
+pub const HONEYDEW: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(240, 255, 240);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: hotpink;"></div>
+pub const HOTPINK: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 105, 180);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: indianred;"></div>
+pub const INDIANRED: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(205, 92, 92);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: indigo;"></div>
+pub const INDIGO: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(75, 0, 130);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: ivory;"></div>
+pub const IVORY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 255, 240);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: khaki;"></div>
+pub const KHAKI: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(240, 230, 140);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lavender;"></div>
+pub const LAVENDER: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(230, 230, 250);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lavenderblush;"></div>
+pub const LAVENDERBLUSH: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 240, 245);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lawngreen;"></div>
+pub const LAWNGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(124, 252, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lemonchiffon;"></div>
+pub const LEMONCHIFFON: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 250, 205);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightblue;"></div>
+pub const LIGHTBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(173, 216, 230);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightcoral;"></div>
+pub const LIGHTCORAL: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(240, 128, 128);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightcyan;"></div>
+pub const LIGHTCYAN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(224, 255, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightgoldenrodyellow;"></div>
+pub const LIGHTGOLDENRODYELLOW: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(250, 250, 210);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightgray;"></div>
+pub const LIGHTGRAY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(211, 211, 211);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightgreen;"></div>
+pub const LIGHTGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(144, 238, 144);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightgrey;"></div>
+pub const LIGHTGREY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(211, 211, 211);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightpink;"></div>
+pub const LIGHTPINK: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 182, 193);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightsalmon;"></div>
+pub const LIGHTSALMON: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 160, 122);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightseagreen;"></div>
+pub const LIGHTSEAGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(32, 178, 170);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightskyblue;"></div>
+pub const LIGHTSKYBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(135, 206, 250);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightslategray;"></div>
+pub const LIGHTSLATEGRAY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(119, 136, 153);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightslategrey;"></div>
+pub const LIGHTSLATEGREY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(119, 136, 153);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightsteelblue;"></div>
+pub const LIGHTSTEELBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(176, 196, 222);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lightyellow;"></div>
+pub const LIGHTYELLOW: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 255, 224);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: lime;"></div>
+pub const LIME: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 255, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: limegreen;"></div>
+pub const LIMEGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(50, 205, 50);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: linen;"></div>
+pub const LINEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(250, 240, 230);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: magenta;"></div>
+pub const MAGENTA: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 0, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: maroon;"></div>
+pub const MAROON: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(128, 0, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumaquamarine;"></div>
+pub const MEDIUMAQUAMARINE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(102, 205, 170);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumblue;"></div>
+pub const MEDIUMBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 0, 205);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumorchid;"></div>
+pub const MEDIUMORCHID: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(186, 85, 211);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumpurple;"></div>
+pub const MEDIUMPURPLE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(147, 112, 219);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumseagreen;"></div>
+pub const MEDIUMSEAGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(60, 179, 113);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumslateblue;"></div>
+pub const MEDIUMSLATEBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(123, 104, 238);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumspringgreen;"></div>
+pub const MEDIUMSPRINGGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 250, 154);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumturquoise;"></div>
+pub const MEDIUMTURQUOISE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(72, 209, 204);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mediumvioletred;"></div>
+pub const MEDIUMVIOLETRED: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(199, 21, 133);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: midnightblue;"></div>
+pub const MIDNIGHTBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(25, 25, 112);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mintcream;"></div>
+pub const MINTCREAM: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(245, 255, 250);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: mistyrose;"></div>
+pub const MISTYROSE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 228, 225);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: moccasin;"></div>
+pub const MOCCASIN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 228, 181);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: navajowhite;"></div>
+pub const NAVAJOWHITE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 222, 173);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: navy;"></div>
+pub const NAVY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 0, 128);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: oldlace;"></div>
+pub const OLDLACE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(253, 245, 230);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: olive;"></div>
+pub const OLIVE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(128, 128, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: olivedrab;"></div>
+pub const OLIVEDRAB: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(107, 142, 35);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: orange;"></div>
+pub const ORANGE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 165, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: orangered;"></div>
+pub const ORANGERED: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 69, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: orchid;"></div>
+pub const ORCHID: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(218, 112, 214);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: palegoldenrod;"></div>
+pub const PALEGOLDENROD: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(238, 232, 170);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: palegreen;"></div>
+pub const PALEGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(152, 251, 152);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: paleturquoise;"></div>
+pub const PALETURQUOISE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(175, 238, 238);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: palevioletred;"></div>
+pub const PALEVIOLETRED: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(219, 112, 147);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: papayawhip;"></div>
+pub const PAPAYAWHIP: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 239, 213);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: peachpuff;"></div>
+pub const PEACHPUFF: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 218, 185);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: peru;"></div>
+pub const PERU: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(205, 133, 63);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: pink;"></div>
+pub const PINK: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 192, 203);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: plum;"></div>
+pub const PLUM: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(221, 160, 221);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: powderblue;"></div>
+pub const POWDERBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(176, 224, 230);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: purple;"></div>
+pub const PURPLE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(128, 0, 128);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: rebeccapurple;"></div>
+pub const REBECCAPURPLE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(102, 51, 153);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: red;"></div>
+pub const RED: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 0, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: rosybrown;"></div>
+pub const ROSYBROWN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(188, 143, 143);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: royalblue;"></div>
+pub const ROYALBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(65, 105, 225);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: saddlebrown;"></div>
+pub const SADDLEBROWN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(139, 69, 19);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: salmon;"></div>
+pub const SALMON: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(250, 128, 114);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: sandybrown;"></div>
+pub const SANDYBROWN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(244, 164, 96);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: seagreen;"></div>
+pub const SEAGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(46, 139, 87);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: seashell;"></div>
+pub const SEASHELL: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 245, 238);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: sienna;"></div>
+pub const SIENNA: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(160, 82, 45);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: silver;"></div>
+pub const SILVER: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(192, 192, 192);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: skyblue;"></div>
+pub const SKYBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(135, 206, 235);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: slateblue;"></div>
+pub const SLATEBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(106, 90, 205);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: slategray;"></div>
+pub const SLATEGRAY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(112, 128, 144);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: slategrey;"></div>
+pub const SLATEGREY: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(112, 128, 144);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: snow;"></div>
+pub const SNOW: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 250, 250);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: springgreen;"></div>
+pub const SPRINGGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 255, 127);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: steelblue;"></div>
+pub const STEELBLUE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(70, 130, 180);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: tan;"></div>
+pub const TAN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(210, 180, 140);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: teal;"></div>
+pub const TEAL: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(0, 128, 128);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: thistle;"></div>
+pub const THISTLE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(216, 191, 216);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: tomato;"></div>
+pub const TOMATO: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 99, 71);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: turquoise;"></div>
+pub const TURQUOISE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(64, 224, 208);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: violet;"></div>
+pub const VIOLET: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(238, 130, 238);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: wheat;"></div>
+pub const WHEAT: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(245, 222, 179);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: white;"></div>
+pub const WHITE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 255, 255);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: whitesmoke;"></div>
+pub const WHITESMOKE: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(245, 245, 245);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: yellow;"></div>
+pub const YELLOW: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(255, 255, 0);
+
+///<div style="display: inline-block; width: 3em; height: 1em; border: 1px solid black; background: yellowgreen;"></div>
+pub const YELLOWGREEN: crate::rgb::Srgb<u8> = crate::rgb::Srgb::new(154, 205, 50);
+static COLORS: ::phf::Map<&'static str, crate::rgb::Srgb<u8>> = phf::phf_map! {
+    "aliceblue" => ALICEBLUE,
+    "antiquewhite" => ANTIQUEWHITE,
+    "aqua" => AQUA,
+    "aquamarine" => AQUAMARINE,
+    "azure" => AZURE,
+    "beige" => BEIGE,
+    "bisque" => BISQUE,
+    "black" => BLACK,
+    "blanchedalmond" => BLANCHEDALMOND,
+    "blue" => BLUE,
+    "blueviolet" => BLUEVIOLET,
+    "brown" => BROWN,
+    "burlywood" => BURLYWOOD,
+    "cadetblue" => CADETBLUE,
+    "chartreuse" => CHARTREUSE,
+    "chocolate" => CHOCOLATE,
+    "coral" => CORAL,
+    "cornflowerblue" => CORNFLOWERBLUE,
+    "cornsilk" => CORNSILK,
+    "crimson" => CRIMSON,
+    "cyan" => CYAN,
+    "darkblue" => DARKBLUE,
+    "darkcyan" => DARKCYAN,
+    "darkgoldenrod" => DARKGOLDENROD,
+    "darkgray" => DARKGRAY,
+    "darkgreen" => DARKGREEN,
+    "darkgrey" => DARKGREY,
+    "darkkhaki" => DARKKHAKI,
+    "darkmagenta" => DARKMAGENTA,
+    "darkolivegreen" => DARKOLIVEGREEN,
+    "darkorange" => DARKORANGE,
+    "darkorchid" => DARKORCHID,
+    "darkred" => DARKRED,
+    "darksalmon" => DARKSALMON,
+    "darkseagreen" => DARKSEAGREEN,
+    "darkslateblue" => DARKSLATEBLUE,
+    "darkslategray" => DARKSLATEGRAY,
+    "darkslategrey" => DARKSLATEGREY,
+    "darkturquoise" => DARKTURQUOISE,
+    "darkviolet" => DARKVIOLET,
+    "deeppink" => DEEPPINK,
+    "deepskyblue" => DEEPSKYBLUE,
+    "dimgray" => DIMGRAY,
+    "dimgrey" => DIMGREY,
+    "dodgerblue" => DODGERBLUE,
+    "firebrick" => FIREBRICK,
+    "floralwhite" => FLORALWHITE,
+    "forestgreen" => FORESTGREEN,
+    "fuchsia" => FUCHSIA,
+    "gainsboro" => GAINSBORO,
+    "ghostwhite" => GHOSTWHITE,
+    "gold" => GOLD,
+    "goldenrod" => GOLDENROD,
+    "gray" => GRAY,
+    "grey" => GREY,
+    "green" => GREEN,
+    "greenyellow" => GREENYELLOW,
+    "honeydew" => HONEYDEW,
+    "hotpink" => HOTPINK,
+    "indianred" => INDIANRED,
+    "indigo" => INDIGO,
+    "ivory" => IVORY,
+    "khaki" => KHAKI,
+    "lavender" => LAVENDER,
+    "lavenderblush" => LAVENDERBLUSH,
+    "lawngreen" => LAWNGREEN,
+    "lemonchiffon" => LEMONCHIFFON,
+    "lightblue" => LIGHTBLUE,
+    "lightcoral" => LIGHTCORAL,
+    "lightcyan" => LIGHTCYAN,
+    "lightgoldenrodyellow" => LIGHTGOLDENRODYELLOW,
+    "lightgray" => LIGHTGRAY,
+    "lightgreen" => LIGHTGREEN,
+    "lightgrey" => LIGHTGREY,
+    "lightpink" => LIGHTPINK,
+    "lightsalmon" => LIGHTSALMON,
+    "lightseagreen" => LIGHTSEAGREEN,
+    "lightskyblue" => LIGHTSKYBLUE,
+    "lightslategray" => LIGHTSLATEGRAY,
+    "lightslategrey" => LIGHTSLATEGREY,
+    "lightsteelblue" => LIGHTSTEELBLUE,
+    "lightyellow" => LIGHTYELLOW,
+    "lime" => LIME,
+    "limegreen" => LIMEGREEN,
+    "linen" => LINEN,
+    "magenta" => MAGENTA,
+    "maroon" => MAROON,
+    "mediumaquamarine" => MEDIUMAQUAMARINE,
+    "mediumblue" => MEDIUMBLUE,
+    "mediumorchid" => MEDIUMORCHID,
+    "mediumpurple" => MEDIUMPURPLE,
+    "mediumseagreen" => MEDIUMSEAGREEN,
+    "mediumslateblue" => MEDIUMSLATEBLUE,
+    "mediumspringgreen" => MEDIUMSPRINGGREEN,
+    "mediumturquoise" => MEDIUMTURQUOISE,
+    "mediumvioletred" => MEDIUMVIOLETRED,
+    "midnightblue" => MIDNIGHTBLUE,
+    "mintcream" => MINTCREAM,
+    "mistyrose" => MISTYROSE,
+    "moccasin" => MOCCASIN,
+    "navajowhite" => NAVAJOWHITE,
+    "navy" => NAVY,
+    "oldlace" => OLDLACE,
+    "olive" => OLIVE,
+    "olivedrab" => OLIVEDRAB,
+    "orange" => ORANGE,
+    "orangered" => ORANGERED,
+    "orchid" => ORCHID,
+    "palegoldenrod" => PALEGOLDENROD,
+    "palegreen" => PALEGREEN,
+    "paleturquoise" => PALETURQUOISE,
+    "palevioletred" => PALEVIOLETRED,
+    "papayawhip" => PAPAYAWHIP,
+    "peachpuff" => PEACHPUFF,
+    "peru" => PERU,
+    "pink" => PINK,
+    "plum" => PLUM,
+    "powderblue" => POWDERBLUE,
+    "purple" => PURPLE,
+    "rebeccapurple" => REBECCAPURPLE,
+    "red" => RED,
+    "rosybrown" => ROSYBROWN,
+    "royalblue" => ROYALBLUE,
+    "saddlebrown" => SADDLEBROWN,
+    "salmon" => SALMON,
+    "sandybrown" => SANDYBROWN,
+    "seagreen" => SEAGREEN,
+    "seashell" => SEASHELL,
+    "sienna" => SIENNA,
+    "silver" => SILVER,
+    "skyblue" => SKYBLUE,
+    "slateblue" => SLATEBLUE,
+    "slategray" => SLATEGRAY,
+    "slategrey" => SLATEGREY,
+    "snow" => SNOW,
+    "springgreen" => SPRINGGREEN,
+    "steelblue" => STEELBLUE,
+    "tan" => TAN,
+    "teal" => TEAL,
+    "thistle" => THISTLE,
+    "tomato" => TOMATO,
+    "turquoise" => TURQUOISE,
+    "violet" => VIOLET,
+    "wheat" => WHEAT,
+    "white" => WHITE,
+    "whitesmoke" => WHITESMOKE,
+    "yellow" => YELLOW,
+    "yellowgreen" => YELLOWGREEN,
+};
+use crate::models::Employee;
+use csv::{ReaderBuilder, WriterBuilder};
+use std::io::{Read, Write};
+
+/// Imports employees from a CSV data source.
+///
+/// # Arguments
+/// * `reader` - A type that implements `std::io::Read` (e.g., a file or a byte slice).
+///
+/// # Returns
+/// A `Result` containing a `Vec<Employee>` on success, or a `csv::Error` on failure.
+pub fn import_employees_from_csv<R: Read>(reader: R) -> Result<Vec<Employee>, csv::Error> {
+    let mut rdr = ReaderBuilder::new().has_headers(true).from_reader(reader);
+    let mut employees = Vec::new();
+    for result in rdr.deserialize() {
+        let employee: Employee = result?;
+        employees.push(employee);
+    }
+    Ok(employees)
+}
+
+/// Exports a slice of employees to a CSV data sink.
+///
+/// # Arguments
+/// * `employees` - A slice of `Employee` structs to export.
+/// * `writer` - A type that implements `std::io::Write` (e.g., a file or a `Vec<u8>`).
+///
+/// # Returns
+/// A `Result` indicating success or a `csv::Error` on failure.
+pub fn export_employees_to_csv<W: Write>(
+    employees: &[Employee],
+    writer: W,
+) -> Result<(), csv::Error> {
+    let mut wtr = WriterBuilder::new().from_writer(writer);
+    for employee in employees {
+        wtr.serialize(employee)?;
+    }
+    wtr.flush()?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Employee; // Already using crate::models::Employee
+
+    fn get_sample_employees() -> Vec<Employee> {
+        vec![
+            Employee {
+                user_id: "user1".to_string(),
+                pr_group_2025: "Group A".to_string(),
+                first_name: "John".to_string(),
+                last_name: "Doe".to_string(),
+                current_position: "Developer".to_string(),
+                current_temp_position: None,
+                pr_2021: Some(4.0),
+                pr_2022: Some(4.1),
+                pr_2023: Some(4.2),
+                pr_2024: Some(4.3),
+                user_9box_2024: Some("Top Talent".to_string()),
+                user_9box_2025: Some("Growth Potential".to_string()),
+                notes: Some("High performer".to_string()),
+                current_label: Some("Senior".to_string()),
+                email: Some("john.doe@example.com".to_string()),
+                manager_id: Some("manager1".to_string()),
+                department: Some("Engineering".to_string()),
+                location: Some("New York".to_string()),
+                hire_date: Some("2020-01-15".to_string()),
+            },
+            Employee {
+                user_id: "user2".to_string(),
+                pr_group_2025: "Group B".to_string(),
+                first_name: "Jane".to_string(),
+                last_name: "Smith".to_string(),
+                current_position: "Manager".to_string(),
+                current_temp_position: Some("Acting Director".to_string()),
+                pr_2021: None,
+                pr_2022: Some(4.5),
+                pr_2023: Some(4.6),
+                pr_2024: None,
+                user_9box_2024: None,
+                user_9box_2025: Some("Key Player".to_string()),
+                notes: None,
+                current_label: None,
+                email: Some("jane.smith@example.com".to_string()),
+                manager_id: None,
+                department: Some("Management".to_string()),
+                location: Some("London".to_string()),
+                hire_date: Some("2018-05-20".to_string()),
+            },
+        ]
+    }
+
+    #[test]
+    fn test_import_simple_csv() {
+        let csv_data = r#"User ID,PR Group 2025,First Name,Last Name,Current Position,Current Temp Position,PR2021,PR2022,PR2023,PR2024,User 9Box 2024,User 9Box 2025,Notes,Current Label,Email,Manager ID,Department,Location,Hire Date
+user1,Group A,John,Doe,Developer,,4.0,4.1,4.2,4.3,Top Talent,Growth Potential,High performer,Senior,john.doe@example.com,manager1,Engineering,New York,2020-01-15
+user2,Group B,Jane,Smith,Manager,Acting Director,,,4.5,4.6,,Key Player,,,jane.smith@example.com,,Management,London,2018-05-20
+"#;
+        let result = import_employees_from_csv(csv_data.as_bytes());
+        assert!(result.is_ok(), "CSV import failed: {:?}", result.err());
+
+        let employees = result.unwrap();
+        assert_eq!(employees.len(), 2);
+
+        let emp1 = &employees[0];
+        assert_eq!(emp1.user_id, "user1");
+        assert_eq!(emp1.first_name, "John");
+        assert_eq!(emp1.pr_group_2025, "Group A");
+        assert_eq!(emp1.pr_2024, Some(4.3));
+        assert_eq!(emp1.notes, Some("High performer".to_string()));
+        assert_eq!(emp1.current_temp_position, None);
+        assert_eq!(emp1.email, Some("john.doe@example.com".to_string()));
+        assert_eq!(emp1.manager_id, Some("manager1".to_string()));
+        assert_eq!(emp1.department, Some("Engineering".to_string()));
+        assert_eq!(emp1.location, Some("New York".to_string()));
+        assert_eq!(emp1.hire_date, Some("2020-01-15".to_string()));
+
+
+        let emp2 = &employees[1];
+        assert_eq!(emp2.user_id, "user2");
+        assert_eq!(emp2.first_name, "Jane");
+        assert_eq!(emp2.pr_group_2025, "Group B");
+        assert_eq!(emp2.pr_2021, None);
+        assert_eq!(emp2.current_temp_position, Some("Acting Director".to_string()));
+        assert_eq!(emp2.email, Some("jane.smith@example.com".to_string()));
+        assert_eq!(emp2.manager_id, None);
+    }
+
+    #[test]
+    fn test_export_simple_csv() {
+        let employees = get_sample_employees();
+        let mut buffer = Vec::new();
+
+        let result = export_employees_to_csv(&employees, &mut buffer);
+        assert!(result.is_ok(), "CSV export failed: {:?}", result.err());
+
+        let csv_output = String::from_utf8(buffer).expect("CSV output is not valid UTF-8");
+
+        // Construct expected CSV string carefully, matching Serde's output order and empty fields for None
+        let expected_csv_header = "User ID,PR Group 2025,First Name,Last Name,Current Position,Current Temp Position,PR2021,PR2022,PR2023,PR2024,User 9Box 2024,User 9Box 2025,Notes,Current Label,Email,Manager ID,Department,Location,Hire Date\n";
+        let expected_csv_emp1 = "user1,Group A,John,Doe,Developer,,4.0,4.1,4.2,4.3,Top Talent,Growth Potential,High performer,Senior,john.doe@example.com,manager1,Engineering,New York,2020-01-15\n";
+        let expected_csv_emp2 = "user2,Group B,Jane,Smith,Manager,Acting Director,,,4.5,4.6,,Key Player,,,,jane.smith@example.com,,Management,London,2018-05-20\n";
+        let expected_csv_data = format!("{}{}{}", expected_csv_header, expected_csv_emp1, expected_csv_emp2);
+
+        assert_eq!(csv_output, expected_csv_data);
+    }
+
+    #[test]
+    fn test_csv_round_trip() {
+        let original_employees = get_sample_employees();
+
+        // Export to CSV
+        let mut buffer = Vec::new();
+        let export_result = export_employees_to_csv(&original_employees, &mut buffer);
+        assert!(export_result.is_ok(), "Export failed: {:?}", export_result.err());
+
+        // Import from CSV
+        let import_result = import_employees_from_csv(buffer.as_slice());
+        assert!(import_result.is_ok(), "Import failed: {:?}", import_result.err());
+
+        let imported_employees = import_result.unwrap();
+        
+        // Assert equality (requires Employee to derive PartialEq)
+        assert_eq!(original_employees, imported_employees);
+    }
+}
+use crate::models; // Changed to remove direct AppSettings import
+use serde_json;
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::path::Path;
+
+// Helper struct for JSON serialization of notes
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NoteData {
+    notes: String,
+}
+
+/// Saves an employee's note to a JSON file.
+/// The note is stored in a structure: {"notes": "content..."}
+///
+/// # Arguments
+/// * `notes_dir` - The directory where notes should be stored (e.g., `<storage_path>/notes/`).
+/// * `employee_id` - The unique identifier for the employee.
+/// * `note_content` - The content of the note to save.
+///
+/// # Returns
+/// `Ok(())` on success, or an error message `String` on failure.
+pub fn save_employee_note(
+    notes_dir: &Path,
+    employee_id: &str,
+    note_content: &str,
+) -> Result<(), String> {
+    if !notes_dir.exists() {
+        fs::create_dir_all(notes_dir)
+            .map_err(|e| format!("Failed to create notes directory: {}", e))?;
+    }
+
+    let note_file_path = notes_dir.join(format!("{}.json", employee_id));
+    let note_data = NoteData {
+        notes: note_content.to_string(),
+    };
+
+    let json_string = serde_json::to_string_pretty(&note_data)
+        .map_err(|e| format!("Failed to serialize note to JSON: {}", e))?;
+
+    let mut file = File::create(&note_file_path)
+        .map_err(|e| format!("Failed to create note file {:?}: {}", note_file_path, e))?;
+
+    file.write_all(json_string.as_bytes())
+        .map_err(|e| format!("Failed to write to note file {:?}: {}", note_file_path, e))?;
+
+    Ok(())
+}
+
+/// Loads an employee's note from a JSON file.
+/// Expects the note to be stored in a structure: {"notes": "content..."}
+///
+/// # Arguments
+/// * `notes_dir` - The directory where notes are stored.
+/// * `employee_id` - The unique identifier for the employee.
+///
+/// # Returns
+/// `Ok(Some(String))` if the note is found and loaded,
+/// `Ok(None)` if the note file does not exist,
+/// or an error message `String` on other failures.
+pub fn load_employee_note(
+    notes_dir: &Path,
+    employee_id: &str,
+) -> Result<Option<String>, String> {
+    let note_file_path = notes_dir.join(format!("{}.json", employee_id));
+
+    if !note_file_path.exists() {
+        return Ok(None);
+    }
+
+    let mut file = File::open(&note_file_path)
+        .map_err(|e| format!("Failed to open note file {:?}: {}", note_file_path, e))?;
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .map_err(|e| format!("Failed to read note file {:?}: {}", note_file_path, e))?;
+
+    let note_data: NoteData = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to deserialize note from JSON {:?}: {}", note_file_path, e))?;
+
+    Ok(Some(note_data.notes))
+}
+
+/// Saves the application settings to a JSON file.
+///
+/// # Arguments
+/// * `settings_file` - The path to the settings JSON file.
+/// * `settings` - A reference to the `AppSettings` struct to save.
+///
+/// # Returns
+/// `Ok(())` on success, or an error message `String` on failure.
+pub fn save_app_settings(
+    settings_file: &Path,
+    settings: &models::AppSettings,
+) -> Result<(), String> {
+    // Ensure parent directory exists
+    if let Some(parent_dir) = settings_file.parent() {
+        if !parent_dir.exists() {
+            fs::create_dir_all(parent_dir)
+                .map_err(|e| format!("Failed to create parent directory for settings: {}", e))?;
+        }
+    }
+
+    let json_string = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("Failed to serialize AppSettings to JSON: {}", e))?;
+
+    let mut file = File::create(settings_file)
+        .map_err(|e| format!("Failed to create settings file {:?}: {}", settings_file, e))?;
+
+    file.write_all(json_string.as_bytes())
+        .map_err(|e| format!("Failed to write to settings file {:?}: {}", settings_file, e))?;
+
+    Ok(())
+}
+
+/// Loads the application settings from a JSON file.
+/// If the file does not exist, returns `AppSettings::default()`.
+///
+/// # Arguments
+/// * `settings_file` - The path to the settings JSON file.
+///
+/// # Returns
+/// `Ok(AppSettings)` on success (either loaded or default),
+/// or an error message `String` on failure to read/parse an existing file.
+pub fn load_app_settings(settings_file: &Path) -> Result<models::AppSettings, String> {
+    if !settings_file.exists() {
+        return Ok(models::AppSettings::default());
+    }
+
+    let mut file = File::open(settings_file)
+        .map_err(|e| format!("Failed to open settings file {:?}: {}", settings_file, e))?;
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .map_err(|e| format!("Failed to read settings file {:?}: {}", settings_file, e))?;
+
+    let settings: models::AppSettings = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to deserialize AppSettings from JSON {:?}: {}", settings_file, e))?;
+
+    Ok(settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{AppSettings}; // Employee is not used here directly
+    use std::fs as std_fs; // Renamed to avoid conflict with persistence::fs
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_save_and_load_employee_note() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let notes_dir = dir.path().join("notes");
+
+        let employee_id = "emp123";
+        let note_content = "This is a test note.";
+
+        // Save note
+        let save_result = save_employee_note(&notes_dir, employee_id, note_content);
+        assert!(save_result.is_ok(), "Failed to save note: {:?}", save_result.err());
+
+        // Assert file creation
+        let note_file_path = notes_dir.join(format!("{}.json", employee_id));
+        assert!(note_file_path.exists(), "Note file was not created");
+
+        // Load note
+        let load_result = load_employee_note(&notes_dir, employee_id);
+        assert!(load_result.is_ok(), "Failed to load note: {:?}", load_result.err());
+        assert_eq!(load_result.unwrap(), Some(note_content.to_string()));
+
+        // Test loading non-existent note
+        let non_existent_load_result = load_employee_note(&notes_dir, "non_existent_emp");
+        assert!(non_existent_load_result.is_ok(), "Error when loading non-existent note: {:?}", non_existent_load_result.err());
+        assert_eq!(non_existent_load_result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_save_and_load_app_settings() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let settings_file_path = dir.path().join("settings.json");
+
+        let mut settings = AppSettings::default();
+        settings.theme_preference = "dark".to_string();
+        settings.auto_save_enabled = true;
+        settings.department_colors.insert("Engineering".to_string(), "#FF0000".to_string());
+
+        // Save settings
+        let save_result = save_app_settings(&settings_file_path, &settings);
+        assert!(save_result.is_ok(), "Failed to save settings: {:?}", save_result.err());
+
+        // Assert file creation
+        assert!(settings_file_path.exists(), "Settings file was not created");
+
+        // Load settings
+        let load_result = load_app_settings(&settings_file_path);
+        assert!(load_result.is_ok(), "Failed to load settings: {:?}", load_result.err());
+        assert_eq!(load_result.unwrap(), settings);
+    }
+
+    #[test]
+    fn test_load_default_app_settings_if_file_not_exists() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let non_existent_settings_file = dir.path().join("non_existent_settings.json");
+
+        // Load settings from non-existent file
+        let load_result = load_app_settings(&non_existent_settings_file);
+        assert!(load_result.is_ok(), "Failed to load default settings: {:?}", load_result.err());
+        assert_eq!(load_result.unwrap(), AppSettings::default());
+    }
+
+    #[test]
+    fn test_save_note_creates_directory() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        // notes_dir itself does not exist yet, save_employee_note should create it.
+        let notes_dir = dir.path().join("new_notes_dir"); 
+        
+        let employee_id = "emp001";
+        let note_content = "Test content.";
+
+        let save_result = save_employee_note(&notes_dir, employee_id, note_content);
+        assert!(save_result.is_ok(), "Failed to save note: {:?}", save_result.err());
+        assert!(notes_dir.exists(), "Notes directory was not created by save_employee_note");
+        assert!(notes_dir.join(format!("{}.json", employee_id)).exists(), "Note file was not created in new directory");
+    }
+
+     #[test]
+    fn test_save_settings_creates_parent_directory() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        // settings_file is in a subdirectory that doesn't exist yet
+        let parent_dir = dir.path().join("new_config_parent");
+        let settings_file = parent_dir.join("settings.json"); 
+        
+        let settings = AppSettings::default();
+
+        let save_result = save_app_settings(&settings_file, &settings);
+        assert!(save_result.is_ok(), "Failed to save settings: {:?}", save_result.err());
+        assert!(parent_dir.exists(), "Parent directory for settings was not created.");
+        assert!(settings_file.exists(), "Settings file was not created in new parent directory.");
+    }
+}
+pub mod models;
+pub mod csv_processing;
+pub mod persistence;
+
+pub use models::{
+    Employee, Skill, GridBox, GridState, AppSettings
+};
+pub use csv_processing::{
+    import_employees_from_csv, export_employees_to_csv
+};
+pub use persistence::{
+    save_employee_note, load_employee_note, save_app_settings, load_app_settings
+};
+use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Employee {
+    #[serde(rename = "User ID")]
+    pub user_id: String,
+    #[serde(rename = "PR Group 2025")]
+    pub pr_group_2025: String,
+    #[serde(rename = "First Name")]
+    pub first_name: String,
+    #[serde(rename = "Last Name")]
+    pub last_name: String,
+    #[serde(rename = "Current Position")]
+    pub current_position: String,
+    #[serde(rename = "Current Temp Position")]
+    pub current_temp_position: Option<String>,
+    #[serde(rename = "PR2021")]
+    pub pr_2021: Option<f64>,
+    #[serde(rename = "PR2022")]
+    pub pr_2022: Option<f64>,
+    #[serde(rename = "PR2023")]
+    pub pr_2023: Option<f64>,
+    #[serde(rename = "PR2024")]
+    pub pr_2024: Option<f64>,
+    #[serde(rename = "User 9Box 2024")]
+    pub user_9box_2024: Option<String>,
+    #[serde(rename = "User 9Box 2025")]
+    pub user_9box_2025: Option<String>,
+    #[serde(rename = "Notes")]
+    pub notes: Option<String>,
+    #[serde(rename = "Current Label")]
+    pub current_label: Option<String>,
+    // Additional fields based on typical employee data, adjust as needed
+    #[serde(rename = "Email")]
+    pub email: Option<String>,
+    #[serde(rename = "Manager ID")]
+    pub manager_id: Option<String>,
+    #[serde(rename = "Department")]
+    pub department: Option<String>,
+    #[serde(rename = "Location")]
+    pub location: Option<String>,
+    #[serde(rename = "Hire Date")]
+    pub hire_date: Option<String>, // Consider using a date/time type if appropriate
+    pub skills: Vec<Skill>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Skill {
+    pub id: String,
+    pub name: String,
+}
+
+// Grid-Related Structures
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GridBox {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct GridState {
+    pub assignments: HashMap<String, Vec<String>>,
+}
+
+// Application Settings
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AppSettings {
+    pub theme_preference: String,
+    pub department_colors: HashMap<String, String>,
+    pub auto_save_enabled: bool,
+    pub view_scale: Option<f32>, // New field
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        AppSettings {
+            theme_preference: "system".to_string(),
+            department_colors: HashMap::new(),
+            auto_save_enabled: false,
+            view_scale: Some(1.0), // Default view_scale
+        }
+    }
+}
+
+// New function to provide a list of predefined skills:
+pub fn get_predefined_skills() -> Vec<Skill> {
+    vec![
+        Skill { id: "sk_rust".to_string(), name: "Rust".to_string() },
+        Skill { id: "sk_gui".to_string(), name: "GUI Design".to_string() },
+        Skill { id: "sk_project_mgmt".to_string(), name: "Project Management".to_string() },
+        Skill { id: "sk_public_speaking".to_string(), name: "Public Speaking".to_string() },
+        Skill { id: "sk_data_analysis".to_string(), name: "Data Analysis".to_string() },
+        // Add more diverse skills as needed
+    ]
+}
