@@ -1,6 +1,33 @@
-use iced::widget::text;
-use iced::widget::{button, container};
-use iced::{Background, Color, Theme};
+use iced::widget::{text, button, container};
+use iced::{Background, Border, Color, Shadow, Theme};
+
+#[derive(Debug, Clone, Copy)]
+pub enum ContainerStyle {
+    DragCard,
+    // You can define more styles here
+}
+
+fn drag_card_style(_: &Theme) -> container::Appearance {
+    iced::widget::container::Appearance {
+        background: Some(Background::Color(Color {
+            a: 0.88,
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+        })),
+        text_color: None,
+        border: Border::default(),
+        shadow: Shadow::default(),
+    }
+}
+
+impl From<ContainerStyle> for iced::theme::Container {
+    fn from(style: ContainerStyle) -> Self {
+        match style {
+            ContainerStyle::DragCard => iced::theme::Container::Custom(Box::new(drag_card_style)),
+        }
+    }
+}
 
 // Grayscale color palette as functions
 pub fn lightest() -> Color { Color::from_rgb8(0xF2, 0xF2, 0xF2) }
@@ -169,5 +196,17 @@ pub mod text_styles {
         text::Text::new(text)
             .size(16)
             .style(dark())
+    }
+
+    pub fn employee_name(text: String) -> text::Text<'static> {
+        text::Text::new(text)
+            .size(20)
+            .style(Color::from_rgb(0.1, 0.1, 0.1))
+    }
+
+    pub fn employee_position(text: &str) -> text::Text<'_> {
+        text::Text::new(text)
+            .size(16)
+            .style(Color::from_rgb(0.2, 0.2, 0.2))
     }
 }

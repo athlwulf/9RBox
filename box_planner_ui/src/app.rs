@@ -9,6 +9,7 @@ use std::fs::File; // Added File
 use std::io::BufReader; // Added BufReader
 use std::path::Path;
 use std::time::Duration; // New import
+use crate::styles::ContainerStyle;
 
 const SETTINGS_FILE_PATH: &str = "box_planner_ui/app_settings.json";
 const SAMPLE_EMPLOYEES_CSV_PATH: &str = "box_planner_ui/sample_employees.csv";
@@ -547,67 +548,49 @@ impl iced::Application for App {
         // REMOVED the final Command::none() from here
     }
 
-    fn view(&self) -> Element<Message> {
-        use iced::{Length, Color};
-        use iced::widget::{Container, Column, Text};
+fn view(&self) -> Element<Message> {
+    use iced::{Length, Color};
+    use iced::widget::{Container, Column, Text};
+        use crate::styles::ContainerStyle;
+        use crate::styles::text_styles;
 
-        // Start with the main app view
-        let main_app_view = view_app(self);
+    let main_app_view = view_app(self);
 
-        // If an employee is being dragged, overlay a draggable card at the cursor position
-        if let (Some(emp_id), Some((x, y))) = (&self.dragged_employee_id, self.dragged_item_current_pos) {
-            if let Some(employee) = self.employees.iter().find(|e| &e.user_id == emp_id) {
-                let card = Container::new(
-                    Column::new()
-                        .spacing(4)
-                        .push(Text::new(format!("{} {}", employee.first_name, employee.last_name)).size(20).style(Color::from_rgb(0.1,0.1,0.1)))
-                        .push(Text::new(employee.current_position.clone()).size(16).style(Color::from_rgb(0.2,0.2,0.2)))
-                )
-                .padding(16)
-                .width(Length::Shrink)
-                .style(
-                    iced::theme::Container::Custom(Box::new(|_theme: &_| {
-                        iced::widget::container::Appearance {
-                            background: Some(iced::Background::Color(Color {
-                                a: 0.88, r: 1.0, g: 1.0, b: 1.0,
-                            })),
-                            text_color: None,
-                            border: iced::Border::default(),
-                            shadow: iced::Shadow::default(),
-                        }
-                    }))
-                );
+    if let (Some(emp_id), Some((x, y))) = (&self.dragged_employee_id, self.dragged_item_current_pos) {
+        if let Some(employee) = self.employees.iter().find(|e| &e.user_id == emp_id) {
+            let full_name = format!("{} {}", employee.first_name, employee.last_name);
+            let name_text = text_styles::employee_name(full_name);
+            let position_text = text_styles::employee_position(&employee.current_position);
 
-                let card_width: f32 = 200.0;
-                let card_height: f32 = 80.0;
+            let card = Container::new(
+                Column::new()
+                    .spacing(4)
+                    .push(name_text)
+                    .push(position_text)
+            )
+            .padding(16)
+            .width(Length::Shrink)
+            .style(ContainerStyle::DragCard);
 
-                let floating_card = card
-                    .width(Length::Fixed(card_width))
-                    .height(Length::Fixed(card_height))
-                    .style(
-                        iced::theme::Container::Custom(Box::new(|_theme: &_| {
-                            iced::widget::container::Appearance {
-                                background: Some(iced::Background::Color(Color {
-                                    a: 0.88, r: 1.0, g: 1.0, b: 1.0,
-                                })),
-                                text_color: None,
-                                border: iced::Border::default(),
-                                shadow: iced::Shadow::default(),
-                            }
-                        }))
-                    );
+            let card_width: f32 = 200.0;
+            let card_height: f32 = 80.0;
 
-                return Column::new()
-                    .push(main_app_view)
-                    .push(floating_card)
-                    .into();
-            } else {
-                main_app_view
-            }
-        } else {
-            main_app_view
+            let floating_card = card
+                .width(Length::Fixed(card_width))
+                .height(Length::Fixed(card_height));
+
+            return Column::new()
+                .push(main_app_view)
+                .push(floating_card)
+                .into();
         }
     }
+
+    // Fallback view if no card is being dragged
+    Column::new()
+        .push(main_app_view)
+        .into()
+}
 
     fn subscription(&self) -> iced::Subscription<Message> {
         // Always subscribe to global events to catch initial ButtonPressed for drag initiation,
