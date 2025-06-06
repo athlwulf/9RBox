@@ -42,6 +42,7 @@ pub struct Employee {
     pub location: Option<String>,
     #[serde(rename = "Hire Date")]
     pub hire_date: Option<String>, // Consider using a date/time type if appropriate
+    #[serde(default)]
     pub skills: Vec<Skill>,
 }
 
