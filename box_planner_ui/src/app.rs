@@ -822,10 +822,9 @@ mod tests {
         // Manually assign employee to an initial box for testing this specific logic
         app.grid_state.assignments.entry(initial_box_id.clone()).or_default().push(employee_to_drag_id.clone());
         
-        // Simulate starting card drag
-        // app.update(Message::CardDragStarted(employee_to_drag_id.clone())); // Commented out due to Message::CardDragStarted being removed
-        assert_eq!(app.dragged_employee_id, Some(employee_to_drag_id.clone()), "dragged_employee_id should be set after CardDragStarted.");
-
+        // Simulate starting card drag using the updated message variant
+        app.update(Message::EmployeeDragStarted(employee_to_drag_id.clone()));
+        assert_eq!(app.dragged_employee_id, Some(employee_to_drag_id.clone()), "dragged_employee_id should be set after EmployeeDragStarted.");
         // Simulate dropping on a new box (using BoxClicked, which should forward if drag is active)
         app.update(Message::BoxClicked(target_box_id.clone()));
         
