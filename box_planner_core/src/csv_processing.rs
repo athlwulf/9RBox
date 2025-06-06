@@ -66,6 +66,7 @@ mod tests {
                 department: Some("Engineering".to_string()),
                 location: Some("New York".to_string()),
                 hire_date: Some("2020-01-15".to_string()),
+                skills: vec![],
             },
             Employee {
                 user_id: "user2".to_string(),
@@ -87,6 +88,7 @@ mod tests {
                 department: Some("Management".to_string()),
                 location: Some("London".to_string()),
                 hire_date: Some("2018-05-20".to_string()),
+                skills: vec![],
             },
         ]
     }
