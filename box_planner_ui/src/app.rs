@@ -626,11 +626,11 @@ mod tests {
         App::new()
     }
 
-    // Note: The test for `dragged_employee_id` was for the old implementation.
-    // The field is now `drag_source_card_id`.
+    // Note: the drag-and-drop test originally referenced `drag_source_card_id`.
+    // That field was removed and replaced by `dragged_employee_id`.
     // The test `test_card_drag_and_drop_logic` should be updated or replaced
     // once the full drag-and-drop logic with overlay and mouse release is in place.
-    // For now, I will keep the existing test as it tests the press-and-click-box logic.
+    // For now, the existing test remains as it covers the press-and-click-box logic.
     // A new test for the overlay itself is not straightforward as it's a visual element.
 
     #[test]
