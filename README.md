@@ -54,7 +54,7 @@ Based on latest UI sketches and feedback:
 
 ## 4. Implementation Plan
 
-### 4.1 Core Library (`box_planner-core`)  
+### 4.1 Core Library (`box_planner_core`)
 - **Data models** in `src/model.rs` (derive `Serialize`/`Deserialize`).  
 - **CSV I/O** via the [`csv`](https://crates.io/crates/csv) and [`serde`](https://crates.io/crates/serde) crates.  
 - **In-memory state**: `Vec<Employee>` and `GridState` structs.  
