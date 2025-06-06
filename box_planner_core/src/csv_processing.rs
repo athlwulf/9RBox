@@ -140,7 +140,7 @@ user2,Group B,Jane,Smith,Manager,Acting Director,,,4.5,4.6,,Key Player,,,jane.sm
         // Construct expected CSV string carefully, matching Serde's output order and empty fields for None
         let expected_csv_header = "User ID,PR Group 2025,First Name,Last Name,Current Position,Current Temp Position,PR2021,PR2022,PR2023,PR2024,User 9Box 2024,User 9Box 2025,Notes,Current Label,Email,Manager ID,Department,Location,Hire Date\n";
         let expected_csv_emp1 = "user1,Group A,John,Doe,Developer,,4.0,4.1,4.2,4.3,Top Talent,Growth Potential,High performer,Senior,john.doe@example.com,manager1,Engineering,New York,2020-01-15\n";
-        let expected_csv_emp2 = "user2,Group B,Jane,Smith,Manager,Acting Director,,,4.5,4.6,,Key Player,,,,jane.smith@example.com,,Management,London,2018-05-20\n";
+        let expected_csv_emp2 = "user2,Group B,Jane,Smith,Manager,Acting Director,,4.5,4.6,,,Key Player,,,jane.smith@example.com,,Management,London,2018-05-20\n";
         let expected_csv_data = format!("{}{}{}", expected_csv_header, expected_csv_emp1, expected_csv_emp2);
 
         assert_eq!(csv_output, expected_csv_data);
